@@ -543,21 +543,30 @@ export class ConversationPanel {
       // Real backend email result fields: status, to, subject, message, method
       const emailData = backendData.email || {};
       const isSuccess = emailData.status === 'success' || backendData.status === 'success';
+      const needsAuth = emailData.status === 'needs_auth' || backendData.status === 'needs_auth' || (!isSuccess && String(emailData.error || '').toLowerCase().includes('connect'));
       const toAddr = emailData.to || '';
       const subj = emailData.subject || '';
-      const method = emailData.method || 'backend';
+      const method = emailData.method || 'google_oauth';
       const errorMsg = emailData.error || '';
-      const statusColor = isSuccess ? '#00e676' : '#ff453a';
-      const statusLabel = isSuccess ? 'Sent ✓' : 'Not Configured ✗';
+      const statusColor = isSuccess ? '#00e676' : (needsAuth ? '#4285F4' : '#ff453a');
+      const statusLabel = isSuccess ? 'Sent ✓' : (needsAuth ? 'Auth Required 🔒' : 'Failed ✗');
       widgetContent = `
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:6px;">
-          <div style="font-weight:700; font-size:13px; color:${statusColor}; display:flex; align-items:center; gap:6px;">✉️ EMAIL ${isSuccess ? 'SENT' : 'PENDING CONFIGURATION'}</div>
-          <span style="font-size:10px; background:rgba(0,230,118,0.15); color:${statusColor}; padding:2px 6px; border-radius:4px;">${statusLabel}</span>
+          <div style="font-weight:700; font-size:13px; color:${statusColor}; display:flex; align-items:center; gap:6px;">✉️ GMAIL / EMAIL ${isSuccess ? 'SENT' : (needsAuth ? 'AUTHENTICATION NEEDED' : 'ACTION')}</div>
+          <span style="font-size:10px; background:rgba(66,133,244,0.15); color:${statusColor}; padding:2px 6px; border-radius:4px; font-weight:600;">${statusLabel}</span>
         </div>
         <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; font-size:12px;">
           ${toAddr ? `<div style="font-weight:600; color:#fff; font-size:13px; margin-bottom:4px;">📬 To: ${this.escapeHtml(toAddr)}</div>` : ''}
           ${subj ? `<div style="font-size:11px; color:rgba(255,255,255,0.6); margin-bottom:4px;">📝 Subject: ${this.escapeHtml(subj)}</div>` : ''}
-          ${!isSuccess && errorMsg ? `<div style="margin-top:6px; font-size:11px; color:#ffd93d; background:rgba(255,217,61,0.08); border:1px solid rgba(255,217,61,0.2); padding:8px; border-radius:6px;">⚙️ ${this.escapeHtml(errorMsg)}</div>` : ''}
+          ${errorMsg ? `<div style="margin-top:6px; font-size:11px; color:${needsAuth ? '#a29bfe' : '#ffd93d'}; background:${needsAuth ? 'rgba(162,155,254,0.1)' : 'rgba(255,217,61,0.08)'}; border:1px solid ${needsAuth ? 'rgba(162,155,254,0.2)' : 'rgba(255,217,61,0.2)'}; padding:8px; border-radius:6px;">⚙️ ${this.escapeHtml(errorMsg)}</div>` : ''}
+          ${!isSuccess ? `
+            <div style="margin-top:8px;">
+              <button class="btn-connect-google-inline" style="background:#4285F4; border:none; color:#fff; padding:6px 12px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"/></svg>
+                Connect Google Workspace
+              </button>
+            </div>
+          ` : ''}
           ${method && method !== 'none' ? `<div style="margin-top:4px; font-size:9px; color:rgba(255,255,255,0.3);">via: ${this.escapeHtml(method)}</div>` : ''}
         </div>
       `;
@@ -898,6 +907,22 @@ export class ConversationPanel {
         const newMsg = prompt("Edit Email Body / Message:", resultText);
         if (newMsg) {
           controlPlane.sendCapability('email', 'send_email', { body: newMsg });
+        }
+      });
+    }
+
+    const connectGoogleInlineBtn = card.querySelector('.btn-connect-google-inline');
+    if (connectGoogleInlineBtn) {
+      connectGoogleInlineBtn.addEventListener('click', async () => {
+        try {
+          connectGoogleInlineBtn.textContent = 'Opening Google...';
+          const res = await controlPlane.startGoogleOAuth('connect');
+          if (res.url) {
+            window.open(res.url, 'google_oauth', 'width=580,height=680,menubar=no,toolbar=no');
+          }
+        } catch (err) {
+          alert('Could not start Google connection: ' + err.message);
+          connectGoogleInlineBtn.textContent = 'Connect Google Workspace';
         }
       });
     }

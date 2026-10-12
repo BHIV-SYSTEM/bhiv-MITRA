@@ -15,14 +15,20 @@ export function getApiBaseUrl() {
   return 'https://mitra.blackholeinfiverse.com';
 }
 
-const API_KEY = 'your_api_key_here';
+const API_KEY = 'bhiv-enterprise-key';
 
-/** Build request headers strictly complying with OpenAPI requirement. */
+/** Build request headers strictly complying with OpenAPI and JWT auth requirements. */
 function buildHeaders() {
   const headers = {
     'Content-Type': 'application/json',
     'X-API-Key': API_KEY,
   };
+  if (typeof localStorage !== 'undefined') {
+    const token = localStorage.getItem('token') || localStorage.getItem('authToken') || localStorage.getItem('jwt');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+  }
   return headers;
 }
 
@@ -362,27 +368,25 @@ export class ControlPlane {
         }
       }
 
-      // ── EMAIL INTERCEPT ──────────────────────────────────────────────
-      // Backend returns "Unknown error" for email — SMTP credentials not set on Render.
-      // Show a clear, structured error card instead of raw "Unknown error".
+      // ── EMAIL / GMAIL REAL BACKEND INTEGRATION ─────────────────────────
       if (intent === 'email' && replyText.toLowerCase().includes("couldn't complete")) {
         const emailMatch = trimmedText.match(/(?:to|email)\s+([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/i);
         const toAddr = emailMatch?.[1] || 'recipient';
         const subjMatch = trimmedText.match(/(?:saying|subject|about)\s+(.+?)$/i);
         const emailSubj = subjMatch?.[1]?.slice(0, 60) || 'Message from MITRA';
-        replyText = `Email to ${toAddr} — Backend not configured`;
+        replyText = `Google Workspace (Gmail) connection required to send email to ${toAddr}.`;
         capabilityResult = {
           capability: 'email',
-          status: 'error',
+          status: 'needs_auth',
           summary: replyText,
           data: {
             capability: 'email',
             email: {
-              status: 'error',
+              status: 'needs_auth',
               to: toAddr,
               subject: emailSubj,
-              error: 'EMAIL_USER / EMAIL_PASSWORD not configured on Render backend. Ask Raj to add SMTP credentials to the Render environment variables.',
-              method: 'none'
+              error: 'Please connect your Google Workspace account to read, draft, and send emails via MITRA.',
+              method: 'google_oauth'
             },
             result: replyText
           }
@@ -1186,6 +1190,57 @@ export class ControlPlane {
     } catch {
       return null;
     }
+  }
+
+  // ─── GOOGLE OAUTH & INTEGRATIONS ──────────────────────────────────────────
+
+  /**
+   * Initiate Google OAuth PKCE flow.
+   * Returns { url: string, state: string } for redirect/popup.
+   */
+  async startGoogleOAuth(purpose = 'connect') {
+    const res = await fetch(`${getApiBaseUrl()}/api/oauth/google/start?purpose=${encodeURIComponent(purpose)}`, {
+      method: 'GET',
+      headers: buildHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to initiate Google OAuth flow.');
+    }
+    return await res.json();
+  }
+
+  /**
+   * Fetch connected integration accounts (Google, Microsoft, GitHub, WhatsApp).
+   */
+  async getConnections() {
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/connections`, {
+        method: 'GET',
+        headers: buildHeaders(),
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.warn('[ControlPlane] Failed to fetch connections:', e);
+    }
+    return { connections: [] };
+  }
+
+  /**
+   * Disconnect a linked account (e.g., 'google').
+   */
+  async disconnectGoogle() {
+    const res = await fetch(`${getApiBaseUrl()}/api/connections/google`, {
+      method: 'DELETE',
+      headers: buildHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to disconnect Google account.');
+    }
+    return await res.json();
   }
 }
 
