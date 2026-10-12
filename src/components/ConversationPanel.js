@@ -82,6 +82,12 @@ export class ConversationPanel {
     
     const badgeContainer = document.createElement('div');
     badgeContainer.className = 'mitra-hero-badge-container';
+    badgeContainer.style.cursor = 'pointer';
+    badgeContainer.setAttribute('title', 'Click to change avatar');
+    badgeContainer.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this.eventBus) this.eventBus.emit('avatar.request_change');
+    });
     
     const glow = document.createElement('div');
     glow.className = 'mitra-hero-badge-glow';
@@ -171,6 +177,12 @@ export class ConversationPanel {
 
     const currentAvatar = getActiveMitraAvatar(this.contextStore);
     const avatarMedia = renderAvatarElement(currentAvatar, 'chat-avatar-thumb');
+    avatarMedia.style.cursor = 'pointer';
+    avatarMedia.setAttribute('title', 'Click to change avatar');
+    avatarMedia.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this.eventBus) this.eventBus.emit('avatar.request_change');
+    });
 
     const bubble = document.createElement('div');
     bubble.className = 'chat-bubble mitra';

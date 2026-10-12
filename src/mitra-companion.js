@@ -129,7 +129,7 @@ class MitraCompanion extends HTMLElement {
 
     const startDrag = (e) => {
       if (contextStore.getDockMode() !== 'floating') return;
-      if (e.target.closest('button') || e.target.closest('input') || e.target.closest('select')) {
+      if (e.target.closest('button') || e.target.closest('input') || e.target.closest('select') || e.target.closest('.mitra-header-avatar')) {
         return;
       }
 
