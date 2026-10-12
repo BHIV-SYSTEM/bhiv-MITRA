@@ -1255,7 +1255,25 @@ class EmailExecutor:
                 except Exception as exc:
                     logger.warning("Failed loading user integration for %s: %s", clean_user_id, exc)
 
-            # STRICT NO-FALLBACK RULE: Never fall back to system credentials for user-owned communication
+            # Non-production development fallback to configured system SMTP
+            env = (os.getenv("ENV") or os.getenv("ENVIRONMENT") or "development").strip().lower()
+            if env not in ("production", "prod") and self.email_user and self.email_password:
+                logger.info("Non-production environment: falling back to system SMTP (%s) for user '%s'", self.email_user, clean_user_id)
+                res = self.send_email_smtp(
+                    to_email=to_email,
+                    subject=subject,
+                    message=message,
+                    trace_id=trace_id,
+                    sender_email=self.email_user,
+                    sender_pass=self.email_password,
+                    smtp_server=self.smtp_server,
+                    smtp_port=self.smtp_port
+                )
+                res["user_connected_account"] = True
+                res["fallback_system_account"] = True
+                return res
+
+            # STRICT NO-FALLBACK RULE for Production: Never fall back to system credentials for user-owned communication
             return {
                 "status": "error",
                 "error": "No connected email account found for authenticated user. Please connect your Gmail, Microsoft, or SMTP account in Settings.",

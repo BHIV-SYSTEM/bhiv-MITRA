@@ -953,14 +953,61 @@ export class ConversationPanel {
               confirmSendBtn.parentElement.innerHTML = '<div style="color:#00e676; font-size:11px; font-weight:700;">✅ Email dispatched via Google Workspace!</div>';
             }
           } else {
-            alert('Execution response: ' + (res.error || res.detail || res.status || 'Failed'));
-            confirmSendBtn.textContent = '✅ Confirm & Send via Gmail';
-            confirmSendBtn.disabled = false;
+            const errMsg = res.error || res.detail || res.status || 'Failed to dispatch email';
+            const isNeedConnect = errMsg.toLowerCase().includes('connect') || errMsg.toLowerCase().includes('account');
+            const parent = confirmSendBtn.parentElement;
+            if (parent) {
+              parent.innerHTML = `
+                <div style="background:rgba(255,183,0,0.1); border:1px solid rgba(255,183,0,0.3); padding:8px 10px; border-radius:6px; color:#ffd93d; font-size:11px; margin-bottom:8px;">
+                  ⚠️ ${this.escapeHtml(errMsg)}
+                </div>
+                <div style="display:flex; gap:8px;">
+                  ${isNeedConnect ? `
+                    <button class="btn-connect-google-inline" style="background:#4285F4; border:none; color:#fff; padding:6px 12px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"/></svg>
+                      Connect Google Account
+                    </button>
+                  ` : ''}
+                  <button class="btn-retry-confirm-send" style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:#fff; padding:6px 12px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer;">
+                    🔄 Retry
+                  </button>
+                </div>
+              `;
+              const connBtn = parent.querySelector('.btn-connect-google-inline');
+              if (connBtn) {
+                connBtn.addEventListener('click', async () => {
+                  connBtn.textContent = 'Opening Google...';
+                  try {
+                    const authRes = await controlPlane.startGoogleOAuth('connect');
+                    if (authRes.url) {
+                      window.open(authRes.url, 'google_oauth', 'width=580,height=680,menubar=no,toolbar=no');
+                    }
+                  } catch (e) {
+                    alert('Could not start Google connection: ' + e.message);
+                    connBtn.textContent = 'Connect Google Account';
+                  }
+                });
+              }
+              const retryBtn = parent.querySelector('.btn-retry-confirm-send');
+              if (retryBtn) {
+                retryBtn.addEventListener('click', () => {
+                  confirmSendBtn.textContent = '✅ Confirm & Send via Gmail';
+                  confirmSendBtn.disabled = false;
+                  parent.replaceChildren(confirmSendBtn, cancelSendBtn);
+                });
+              }
+            }
           }
         } catch (err) {
-          alert('Confirmation failed: ' + err.message);
           confirmSendBtn.textContent = '✅ Confirm & Send via Gmail';
           confirmSendBtn.disabled = false;
+          const parent = confirmSendBtn.parentElement;
+          if (parent) {
+            const errDiv = document.createElement('div');
+            errDiv.style.cssText = 'color:#ff453a; font-size:11px; margin-top:6px;';
+            errDiv.textContent = 'Error: ' + err.message;
+            parent.appendChild(errDiv);
+          }
         }
       });
     }
