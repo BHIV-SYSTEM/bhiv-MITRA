@@ -904,23 +904,69 @@ export class ControlPlane {
           params: params,
           user_id: userId
         };
-        const response = await fetch(`${getApiBaseUrl()}/api/companion/execute`, {
+        let response = await fetch(`${getApiBaseUrl()}/api/companion/execute`, {
           method: 'POST',
           headers: buildHeaders(),
           body: JSON.stringify(payload),
         });
-        if (!response.ok) throw new Error(`Email failed: HTTP ${response.status}`);
+
+        // Auto-heal 401s caused by expired JWT in localStorage
+        if (response.status === 401) {
+          if (typeof localStorage !== 'undefined') {
+            localStorage.removeItem('token');
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('jwt');
+            localStorage.removeItem('mitra_auth_token');
+          }
+          response = await fetch(`${getApiBaseUrl()}/api/companion/execute`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+            body: JSON.stringify(payload),
+          });
+        }
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            return {
+              status: 'executed',
+              result: {
+                status: 'needs_auth',
+                summary: 'Authentication required. Please connect your Google account in Settings.',
+                email: {
+                  status: 'needs_auth',
+                  to: params.to,
+                  subject: params.subject,
+                  error: 'Session expired or Google account not connected. Please connect Google Workspace.',
+                  requires_google_oauth: true
+                }
+              }
+            };
+          }
+          throw new Error(`Email failed: HTTP ${response.status}`);
+        }
         const data = await response.json();
         const result = data.result || {};
         eventBus.emit('health.changed', { status: 'Healthy' });
-        // result.status may be 'success' or 'error'
-        const isSuccess = result.status === 'success';
-        const summary = isSuccess
-          ? `Email sent to ${result.to || params.to} — Subject: "${result.subject || params.subject}"`
-          : `Email failed: ${result.error || 'Unknown backend error'}`;
+        // result.status may be 'success', 'sent', 'confirmation_required', or 'error'
+        const isSuccess = result.status === 'success' || result.status === 'sent';
+        const isConfirm = result.status === 'confirmation_required';
+        let summary;
+        if (isSuccess) {
+          summary = `Email sent to ${result.to || params.to} — Subject: "${result.subject || params.subject}"`;
+        } else if (isConfirm) {
+          summary = `Email staged — Confirmation required before sending to ${result.confirmation?.recipient || result.confirmation?.target || params.to}`;
+        } else {
+          summary = `Email failed: ${result.error || 'Unknown backend error'}`;
+        }
         return {
           status: 'executed',
-          result: { status: result.status || 'unknown', summary, email: result }
+          result: {
+            status: result.status || 'unknown',
+            summary,
+            email: result,
+            pending_action_id: result.pending_action_id || result.action_id,
+            confirmation: result.confirmation
+          }
         };
       }
 
@@ -933,11 +979,24 @@ export class ControlPlane {
           params: params,
           user_id: userId
         };
-        const response = await fetch(`${getApiBaseUrl()}/api/companion/execute`, {
+        let response = await fetch(`${getApiBaseUrl()}/api/companion/execute`, {
           method: 'POST',
           headers: buildHeaders(),
           body: JSON.stringify(payload),
         });
+        if (response.status === 401) {
+          if (typeof localStorage !== 'undefined') {
+            localStorage.removeItem('token');
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('jwt');
+            localStorage.removeItem('mitra_auth_token');
+          }
+          response = await fetch(`${getApiBaseUrl()}/api/companion/execute`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+            body: JSON.stringify(payload),
+          });
+        }
         if (!response.ok) throw new Error(`WhatsApp failed: HTTP ${response.status}`);
         const data = await response.json();
         const result = data.result || {};
@@ -1241,6 +1300,43 @@ export class ControlPlane {
       throw new Error(err.detail || 'Failed to disconnect Google account.');
     }
     return await res.json();
+  }
+
+  /**
+   * Confirm and dispatch a staged communication action (B.COMM-3 approval policy).
+   */
+  async confirmCommunicationAction(pendingActionId) {
+    let response = await fetch(`${getApiBaseUrl()}/api/communication/actions/${encodeURIComponent(pendingActionId)}/confirm`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({})
+    });
+    if (response.status === 401) {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem('token');
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('jwt');
+        localStorage.removeItem('mitra_auth_token');
+      }
+      response = await fetch(`${getApiBaseUrl()}/api/communication/actions/${encodeURIComponent(pendingActionId)}/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+        body: JSON.stringify({})
+      });
+    }
+    return await response.json();
+  }
+
+  /**
+   * Cancel a staged communication action.
+   */
+  async cancelCommunicationAction(pendingActionId) {
+    const response = await fetch(`${getApiBaseUrl()}/api/communication/actions/${encodeURIComponent(pendingActionId)}/cancel`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({})
+    });
+    return await response.json();
   }
 }
 

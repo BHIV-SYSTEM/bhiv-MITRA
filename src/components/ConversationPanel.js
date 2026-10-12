@@ -542,32 +542,55 @@ export class ConversationPanel {
     } else if (capability === 'email') {
       // Real backend email result fields: status, to, subject, message, method
       const emailData = backendData.email || {};
-      const isSuccess = emailData.status === 'success' || backendData.status === 'success';
-      const needsAuth = emailData.status === 'needs_auth' || backendData.status === 'needs_auth' || (!isSuccess && String(emailData.error || '').toLowerCase().includes('connect'));
-      const toAddr = emailData.to || '';
-      const subj = emailData.subject || '';
-      const method = emailData.method || 'google_oauth';
-      const errorMsg = emailData.error || '';
-      const statusColor = isSuccess ? '#00e676' : (needsAuth ? '#4285F4' : '#ff453a');
-      const statusLabel = isSuccess ? 'Sent ✓' : (needsAuth ? 'Auth Required 🔒' : 'Failed ✗');
+      const isSuccess = emailData.status === 'success' || emailData.status === 'sent' || backendData.status === 'success' || backendData.status === 'sent';
+      const isPendingConfirm = emailData.status === 'confirmation_required' || backendData.status === 'confirmation_required';
+      const pendingActionId = emailData.pending_action_id || backendData.pending_action_id || emailData.action_id || backendData.action_id || '';
+      const confPayload = emailData.confirmation || backendData.confirmation || {};
+      const needsAuth = emailData.status === 'needs_auth' || backendData.status === 'needs_auth' || (!isSuccess && !isPendingConfirm && String(emailData.error || '').toLowerCase().includes('connect'));
+      const toAddr = confPayload.recipient || confPayload.target || emailData.to || backendData.to || '';
+      const subj = confPayload.subject || emailData.subject || backendData.subject || '';
+      const bodyContent = confPayload.content || confPayload.body || emailData.message || backendData.message || '';
+      const method = emailData.method || backendData.method || 'google_oauth';
+      const errorMsg = emailData.error || backendData.error || '';
+      const statusColor = isSuccess ? '#00e676' : (isPendingConfirm ? '#ffb700' : (needsAuth ? '#4285F4' : '#ff453a'));
+      const statusLabel = isSuccess ? 'Sent ✓' : (isPendingConfirm ? 'Approval Required ⏳' : (needsAuth ? 'Auth Required 🔒' : 'Failed ✗'));
+      const cardTitle = isSuccess ? '✉️ GMAIL / EMAIL SENT' : (isPendingConfirm ? '✉️ EMAIL CONFIRMATION REQUIRED' : (needsAuth ? '✉️ GMAIL AUTHENTICATION NEEDED' : '✉️ EMAIL ACTION'));
+      
+      let actionButtons = '';
+      if (isPendingConfirm && pendingActionId) {
+        actionButtons = `
+          <div style="margin-top:10px; display:flex; gap:8px;">
+            <button class="btn-email-confirm-send" data-action-id="${this.escapeHtml(pendingActionId)}" style="background:#00e676; border:none; color:#000; padding:6px 14px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+              ✅ Confirm & Send via Gmail
+            </button>
+            <button class="btn-email-cancel-send" data-action-id="${this.escapeHtml(pendingActionId)}" style="background:rgba(255,59,48,0.2); border:1px solid rgba(255,59,48,0.4); color:#ff453a; padding:6px 10px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer;">
+              Cancel
+            </button>
+          </div>
+        `;
+      } else if (needsAuth || !isSuccess) {
+        actionButtons = `
+          <div style="margin-top:8px;">
+            <button class="btn-connect-google-inline" style="background:#4285F4; border:none; color:#fff; padding:6px 12px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"/></svg>
+              Connect Google Workspace
+            </button>
+          </div>
+        `;
+      }
+
       widgetContent = `
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:6px;">
-          <div style="font-weight:700; font-size:13px; color:${statusColor}; display:flex; align-items:center; gap:6px;">✉️ GMAIL / EMAIL ${isSuccess ? 'SENT' : (needsAuth ? 'AUTHENTICATION NEEDED' : 'ACTION')}</div>
-          <span style="font-size:10px; background:rgba(66,133,244,0.15); color:${statusColor}; padding:2px 6px; border-radius:4px; font-weight:600;">${statusLabel}</span>
+          <div style="font-weight:700; font-size:13px; color:${statusColor}; display:flex; align-items:center; gap:6px;">${cardTitle}</div>
+          <span class="email-status-badge" style="font-size:10px; background:rgba(66,133,244,0.15); color:${statusColor}; padding:2px 6px; border-radius:4px; font-weight:600;">${statusLabel}</span>
         </div>
-        <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; font-size:12px;">
+        <div class="email-details-box" style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; font-size:12px;">
           ${toAddr ? `<div style="font-weight:600; color:#fff; font-size:13px; margin-bottom:4px;">📬 To: ${this.escapeHtml(toAddr)}</div>` : ''}
           ${subj ? `<div style="font-size:11px; color:rgba(255,255,255,0.6); margin-bottom:4px;">📝 Subject: ${this.escapeHtml(subj)}</div>` : ''}
+          ${bodyContent ? `<div style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.08); padding:8px; border-radius:6px; font-size:11px; color:#ddd; margin:6px 0; white-space:pre-wrap;">${this.escapeHtml(bodyContent)}</div>` : ''}
           ${errorMsg ? `<div style="margin-top:6px; font-size:11px; color:${needsAuth ? '#a29bfe' : '#ffd93d'}; background:${needsAuth ? 'rgba(162,155,254,0.1)' : 'rgba(255,217,61,0.08)'}; border:1px solid ${needsAuth ? 'rgba(162,155,254,0.2)' : 'rgba(255,217,61,0.2)'}; padding:8px; border-radius:6px;">⚙️ ${this.escapeHtml(errorMsg)}</div>` : ''}
-          ${!isSuccess ? `
-            <div style="margin-top:8px;">
-              <button class="btn-connect-google-inline" style="background:#4285F4; border:none; color:#fff; padding:6px 12px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"/></svg>
-                Connect Google Workspace
-              </button>
-            </div>
-          ` : ''}
-          ${method && method !== 'none' ? `<div style="margin-top:4px; font-size:9px; color:rgba(255,255,255,0.3);">via: ${this.escapeHtml(method)}</div>` : ''}
+          ${actionButtons}
+          ${method && method !== 'none' ? `<div style="margin-top:6px; font-size:9px; color:rgba(255,255,255,0.3);">via: ${this.escapeHtml(method)}</div>` : ''}
         </div>
       `;
 
@@ -911,6 +934,53 @@ export class ConversationPanel {
       });
     }
 
+    const confirmSendBtn = card.querySelector('.btn-email-confirm-send');
+    if (confirmSendBtn) {
+      confirmSendBtn.addEventListener('click', async () => {
+        const actionId = confirmSendBtn.getAttribute('data-action-id');
+        confirmSendBtn.textContent = 'Sending via Gmail...';
+        confirmSendBtn.disabled = true;
+        try {
+          const res = await controlPlane.confirmCommunicationAction(actionId);
+          if (res.status === 'sent' || res.status === 'success') {
+            const badge = card.querySelector('.email-status-badge');
+            if (badge) {
+              badge.textContent = 'Sent ✓';
+              badge.style.color = '#00e676';
+              badge.style.background = 'rgba(0, 230, 118, 0.15)';
+            }
+            if (confirmSendBtn.parentElement) {
+              confirmSendBtn.parentElement.innerHTML = '<div style="color:#00e676; font-size:11px; font-weight:700;">✅ Email dispatched via Google Workspace!</div>';
+            }
+          } else {
+            alert('Execution response: ' + (res.error || res.detail || res.status || 'Failed'));
+            confirmSendBtn.textContent = '✅ Confirm & Send via Gmail';
+            confirmSendBtn.disabled = false;
+          }
+        } catch (err) {
+          alert('Confirmation failed: ' + err.message);
+          confirmSendBtn.textContent = '✅ Confirm & Send via Gmail';
+          confirmSendBtn.disabled = false;
+        }
+      });
+    }
+
+    const cancelSendBtn = card.querySelector('.btn-email-cancel-send');
+    if (cancelSendBtn) {
+      cancelSendBtn.addEventListener('click', async () => {
+        const actionId = cancelSendBtn.getAttribute('data-action-id');
+        cancelSendBtn.textContent = 'Cancelling...';
+        try {
+          await controlPlane.cancelCommunicationAction(actionId);
+          if (cancelSendBtn.parentElement) {
+            cancelSendBtn.parentElement.innerHTML = '<div style="color:#a1a1aa; font-size:11px;">Cancelled</div>';
+          }
+        } catch (e) {
+          if (cancelSendBtn.parentElement) cancelSendBtn.parentElement.remove();
+        }
+      });
+    }
+
     const connectGoogleInlineBtn = card.querySelector('.btn-connect-google-inline');
     if (connectGoogleInlineBtn) {
       connectGoogleInlineBtn.addEventListener('click', async () => {
@@ -1026,6 +1096,14 @@ export class ConversationPanel {
   }
 
   addCapabilityErrorCard(capability, errorText, data = {}) {
+    const isAuthErr = String(errorText).includes('401') || String(errorText).toLowerCase().includes('unauthorized') || String(errorText).toLowerCase().includes('token');
+    if (isAuthErr && typeof localStorage !== 'undefined') {
+      localStorage.removeItem('token');
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('jwt');
+      localStorage.removeItem('mitra_auth_token');
+    }
+
     const card = document.createElement('div');
     card.className = 'chat-bubble mitra capability-widget failure';
     card.style.background = 'rgba(35, 15, 15, 0.95)';
@@ -1040,12 +1118,35 @@ export class ConversationPanel {
 
     card.innerHTML = `
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid rgba(255,59,48,0.2); padding-bottom:6px;">
-        <div style="font-weight:700; font-size:13px; color:#ff453a; display:flex; align-items:center; gap:6px;">⚠️ ${this.escapeHtml(capUpper)} EXECUTION FAILED</div>
-        <span style="font-size:10px; background:rgba(255,59,48,0.2); color:#ff453a; padding:2px 6px; border-radius:4px;">Failed</span>
+        <div style="font-weight:700; font-size:13px; color:#ff453a; display:flex; align-items:center; gap:6px;">⚠️ ${this.escapeHtml(capUpper)} ${isAuthErr ? 'AUTHENTICATION NEEDED' : 'EXECUTION FAILED'}</div>
+        <span style="font-size:10px; background:rgba(255,59,48,0.2); color:#ff453a; padding:2px 6px; border-radius:4px;">${isAuthErr ? 'Auth 401' : 'Failed'}</span>
       </div>
       <div style="font-size:12px; color:#ff8585; margin-bottom:4px;">${this.escapeHtml(errorText)}</div>
+      ${isAuthErr ? `
+        <div style="font-size:11px; color:#a29bfe; margin:6px 0;">💡 Stale login session cleaned. Connect your Google Workspace below:</div>
+        <button class="btn-connect-google-inline" style="background:#4285F4; border:none; color:#fff; padding:6px 12px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; margin-bottom:6px;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"/></svg>
+          Connect Google Workspace
+        </button>
+      ` : ''}
       <div class="chat-timestamp">${now}</div>
     `;
+
+    const connectBtn = card.querySelector('.btn-connect-google-inline');
+    if (connectBtn) {
+      connectBtn.addEventListener('click', async () => {
+        try {
+          connectBtn.textContent = 'Opening Google...';
+          const res = await controlPlane.startGoogleOAuth('connect');
+          if (res.url) {
+            window.open(res.url, 'google_oauth', 'width=580,height=680,menubar=no,toolbar=no');
+          }
+        } catch (err) {
+          alert('Could not start Google connection: ' + err.message);
+          connectBtn.textContent = 'Connect Google Workspace';
+        }
+      });
+    }
 
     this.element.appendChild(card);
     this.scrollToBottom();
