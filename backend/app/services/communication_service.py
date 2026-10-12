@@ -509,26 +509,43 @@ class CommunicationService:
                     timestamp=now_iso,
                 )
 
+            action_mode = None
+            if hasattr(action, "metadata") and isinstance(action.metadata, dict):
+                action_mode = action.metadata.get("mode")
+            if not action_mode and hasattr(action, "mode"):
+                action_mode = getattr(action, "mode")
+
             exec_res = self.whatsapp_executor.send_message(
                 to_number=action.recipient,
                 message=action.content or "",
                 trace_id=trace_id,
                 user_id=user_id,
                 is_system_otp=False,
+                mode=action_mode or "personal",
             )
 
-            # Current invariant: User-owned WhatsApp requires Meta WhatsApp Business
+            # Map both Meta Cloud API (business) and Personal Click to Chat (wa.me)
             if exec_res.get("status") == "success":
+                is_personal = exec_res.get("mode") == "personal"
+                delivery_st = exec_res.get("delivery_state", "manual_action_required" if is_personal else "pending")
+                provider_name = "personal_click_to_chat" if is_personal else "meta_whatsapp"
+                msg_summary = exec_res.get("notice") or f"WhatsApp message prepared for {action.recipient}." if is_personal else f"WhatsApp message dispatched to {action.recipient}."
+                
+                result_action_dict = action.to_dict()
+                if exec_res.get("url"):
+                    result_action_dict["wa_url"] = exec_res.get("url")
+                    result_action_dict["url"] = exec_res.get("url")
+
                 return CommunicationResult(
-                    status="sent",
-                    delivery_state="pending",  # Asynchronous delivery invariant
+                    status="ready" if is_personal else "sent",
+                    delivery_state=delivery_st,
                     channel=action.channel,
-                    provider="meta_whatsapp",
+                    provider=provider_name,
                     sender_account=sender_account,
                     recipient=action.recipient,
-                    provider_message_id=exec_res.get("message_sid"),
-                    message=f"WhatsApp message sent to {action.recipient}.",
-                    action=action.to_dict(),
+                    provider_message_id=exec_res.get("message_id") or exec_res.get("message_sid"),
+                    message=msg_summary,
+                    action=result_action_dict,
                     idempotency_key=action.idempotency_key,
                     trace_id=trace_id,
                     timestamp=now_iso,

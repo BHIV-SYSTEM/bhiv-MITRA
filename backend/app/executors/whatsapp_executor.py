@@ -19,7 +19,9 @@ class WhatsAppExecutor:
         message: str,
         trace_id: str,
         user_id: Optional[str] = None,
-        is_system_otp: bool = False
+        is_system_otp: bool = False,
+        mode: Optional[str] = None,
+        **kwargs
     ) -> Dict[str, Any]:
         """
         Send WhatsApp message with strict security separation:
@@ -97,33 +99,53 @@ class WhatsAppExecutor:
                     "channel": "system_otp"
                 }
 
-        # ── 2. USER-OWNED WHATSAPP MESSAGING ──
-        # Require authenticated user_id
-        if not user_id or not str(user_id).strip() or str(user_id).strip().lower() in ("user_default", "default", "none", "null"):
+        # ── 2. USER-OWNED WHATSAPP MESSAGING (Personal vs Business) ──
+        from app.executors.meta_whatsapp_executor import MetaWhatsAppExecutor, generate_personal_wa_link, normalize_e164_phone
+
+        # Determine mode: "personal" (default Click to Chat) vs "business" (Meta Cloud API)
+        # Check explicit mode parameter or fallback gracefully
+        clean_user = str(user_id).strip() if user_id else "user_default"
+        chosen_mode = (mode or getattr(self, "_active_mode", "personal") or "personal").lower()
+
+        meta_client = MetaWhatsAppExecutor()
+        creds = meta_client.get_credentials(user_id=clean_user)
+        has_business_creds = bool(creds.get("access_token") and creds.get("phone_number_id"))
+
+        # If business mode requested or explicitly configured, execute through Meta Cloud API
+        if chosen_mode == "business" or (has_business_creds and chosen_mode != "personal"):
+            res = meta_client.send_text_message(
+                to_phone=to_number,
+                message=message,
+                user_id=clean_user,
+                trace_id=trace_id
+            )
+            return res
+
+        # Otherwise, execute Personal WhatsApp Click to Chat MVP (wa.me)
+        link_data = generate_personal_wa_link(phone=to_number, message=message)
+        if link_data.get("status") == "error":
             return {
                 "status": "error",
-                "error": "Authentication required: user-owned WhatsApp messaging requires an authenticated user identity.",
-                "error_code": "AUTH_REQUIRED",
+                "error": link_data.get("error"),
+                "error_code": "INVALID_PHONE_NUMBER",
                 "trace_id": trace_id,
                 "timestamp": datetime.utcnow().isoformat(),
-                "platform": "whatsapp"
+                "platform": "whatsapp",
+                "mode": "personal"
             }
 
-        # User-owned WhatsApp actions must NEVER execute against system Twilio credentials
-        # and must NEVER use a user's personal phone number as a Twilio From number.
-        # User-owned messaging requires Meta WhatsApp Business Platform (slated for future phases).
-        logger.info(
-            f"User-owned WhatsApp messaging rejected for user '{user_id}': "
-            "Meta WhatsApp Business Platform integration required."
-        )
         return {
-            "status": "error",
-            "error": "User-owned WhatsApp messaging requires a connected Meta WhatsApp Business account. Twilio is strictly isolated for system authentication OTP.",
-            "error_code": "WHATSAPP_BUSINESS_REQUIRED",
-            "user_id": str(user_id).strip(),
+            "status": "success",
+            "delivery_state": "manual_action_required",
+            "platform": "whatsapp",
+            "mode": "personal",
+            "recipient": link_data["formatted_phone"],
+            "recipient_e164": link_data["phone_e164"],
+            "message": link_data["message"],
+            "url": link_data["url"],
+            "notice": link_data["notice"],
             "trace_id": trace_id,
-            "timestamp": datetime.utcnow().isoformat(),
-            "platform": "whatsapp"
+            "timestamp": datetime.utcnow().isoformat()
         }
     
     def receive_webhook(self, webhook_data: Dict) -> Dict[str, Any]:

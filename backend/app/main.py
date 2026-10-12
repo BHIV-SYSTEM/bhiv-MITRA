@@ -111,6 +111,11 @@ try:
 except ImportError:
     pages_router = None
 
+try:
+    from app.api.whatsapp_api import router as whatsapp_api_router
+except ImportError:
+    whatsapp_api_router = None
+
 # -------------------------------------------------
 # Logging
 # -------------------------------------------------
@@ -297,6 +302,8 @@ if telephony_inbound_router:
     app.include_router(telephony_inbound_router)
 if pages_router:
     app.include_router(pages_router)
+if whatsapp_api_router:
+    app.include_router(whatsapp_api_router)
 
 
 # -------------------------------------------------

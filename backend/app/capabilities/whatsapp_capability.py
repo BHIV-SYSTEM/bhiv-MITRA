@@ -88,6 +88,7 @@ class WhatsAppCapability(BaseCapability):
                 "account_id": params.get("account_id"),
                 "idempotency_key": params.get("idempotency_key"),
                 "confirmation_confirmed": bool(params.get("confirmation_confirmed", False)),
+                "mode": params.get("mode", "personal"),
                 "is_system_action": False,
                 "is_system_otp": False,
             }
@@ -107,19 +108,24 @@ class WhatsAppCapability(BaseCapability):
                     ],
                     trace_id=trace_id,
                 )
-            elif result.get("status") in ("success", "sent", "accepted"):
+            elif result.get("status") in ("success", "sent", "accepted", "ready"):
                 summary = (
                     result.get("summary")
                     or result.get("note")
                     or result.get("message")
-                    or f"{action_type.capitalize()} message sent to {contact}"
+                    or f"{action_type.capitalize()} message prepared for {contact}"
                 )
+                wa_url = result.get("url") or (result.get("action") or {}).get("wa_url")
+                card_actions = []
+                if wa_url:
+                    card_actions.append({"label": "Open in WhatsApp", "url": wa_url, "action": "open_wa"})
                 return CapabilityResult(
                     capability=action_type,
                     intent=intent,
                     status="success",
                     summary=summary,
                     data=result,
+                    actions=card_actions,
                     trace_id=trace_id,
                 )
             else:

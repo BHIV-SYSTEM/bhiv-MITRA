@@ -70,6 +70,28 @@ export class SettingsModal {
     }
   }
 
+  async refreshWhatsAppStatus() {
+    const badge = this.element.querySelector('#wa-biz-status-badge');
+    const discBtn = this.element.querySelector('#wa-btn-disc-biz');
+    const phoneInput = this.element.querySelector('#wa-biz-phone-id');
+    const wabaInput = this.element.querySelector('#wa-biz-waba-id');
+
+    try {
+      const data = await controlPlane.getBusinessWhatsAppStatus();
+      if (data && data.status === 'connected') {
+        if (badge) badge.innerHTML = '<span style="color:#00e676; font-weight:600;">● Connected</span>';
+        if (discBtn) discBtn.style.display = 'inline-block';
+        if (phoneInput && !phoneInput.value) phoneInput.value = data.phone_number_id || '';
+        if (wabaInput && !wabaInput.value) wabaInput.value = data.waba_id || '';
+      } else {
+        if (badge) badge.innerHTML = '<span style="color:rgba(255,255,255,0.5);">Not Connected</span>';
+        if (discBtn) discBtn.style.display = 'none';
+      }
+    } catch {
+      if (badge) badge.textContent = 'Status Unavailable';
+    }
+  }
+
   render() {
     const activeTheme = localStorage.getItem('mitra_theme') || 'Midnight';
     const userName = localStorage.getItem('mitra_user_name') || 'User';
@@ -113,7 +135,99 @@ export class SettingsModal {
           </div>
         </div>
 
-        <!-- 2. APPEARANCE -->
+        <!-- 2. WHATSAPP INTEGRATION (DUAL-MODE) -->
+        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:14px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+            <div style="font-size:12px; font-weight:700; color:#fff; display:flex; align-items:center; gap:6px;">
+              <span>💬</span> WhatsApp Integration (Dual-Mode)
+            </div>
+            <div id="wa-active-mode-badge" style="font-size:10px; background:rgba(37,211,102,0.15); color:#25D366; padding:2px 8px; border-radius:10px; font-weight:600;">
+              Dual-Mode Active
+            </div>
+          </div>
+          
+          <!-- Mode Tabs -->
+          <div style="display:flex; gap:6px; margin-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:8px;">
+            <button id="tab-btn-wa-personal" style="flex:1; background:rgba(37,211,102,0.2); border:1px solid #25D366; color:#fff; padding:6px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer;">
+              👤 Personal (Click-to-Chat)
+            </button>
+            <button id="tab-btn-wa-business" style="flex:1; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:rgba(255,255,255,0.7); padding:6px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer;">
+              💼 Business (Meta Cloud API)
+            </button>
+          </div>
+
+          <!-- TAB 1: PERSONAL WHATSAPP -->
+          <div id="wa-panel-personal" style="display:block;">
+            <div style="font-size:11px; color:rgba(255,255,255,0.7); margin-bottom:10px; line-height:1.4;">
+              Official <strong>Click to Chat</strong> (<code>wa.me</code>) prepares messages safely without unauthorized third-party scrapers.
+            </div>
+            <div style="background:rgba(255,217,61,0.06); border:1px solid rgba(255,217,61,0.2); border-radius:8px; padding:8px; font-size:10.5px; color:#ffd93d; margin-bottom:10px;">
+              ⚠️ <em>Delivery limitation:</em> User must review and tap Send inside WhatsApp. Opening the chat does not verify delivery.
+            </div>
+
+            <!-- Quick Personal Composer -->
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <div>
+                <label style="font-size:10.5px; color:rgba(255,255,255,0.6); display:block; margin-bottom:2px;">Recipient Phone Number (with Country Code):</label>
+                <input type="text" id="wa-input-phone" placeholder="+91 9876543210" style="width:100%; box-sizing:border-box; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.15); color:#fff; padding:6px 10px; border-radius:6px; font-size:12px;" />
+              </div>
+              <div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
+                  <label style="font-size:10.5px; color:rgba(255,255,255,0.6);">Message Composer:</label>
+                  <button id="wa-btn-ai-draft" style="background:rgba(108,92,231,0.25); border:1px solid #6C5CE7; color:#a29bfe; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:600; cursor:pointer;">
+                    ✨ AI Draft
+                  </button>
+                </div>
+                <textarea id="wa-input-message" rows="2" placeholder="Type message or click AI Draft..." style="width:100%; box-sizing:border-box; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.15); color:#fff; padding:6px 10px; border-radius:6px; font-size:12px; resize:vertical;"></textarea>
+              </div>
+              <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:2px;">
+                <button id="wa-btn-send-personal" style="background:#25D366; border:none; color:#06140E; padding:6px 14px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:6px;">
+                  📲 Open &amp; Send on WhatsApp
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 2: BUSINESS WHATSAPP -->
+          <div id="wa-panel-business" style="display:none;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+              <div style="font-size:11px; color:rgba(255,255,255,0.7);">
+                Meta WhatsApp Business Platform
+              </div>
+              <div id="wa-biz-status-badge" style="font-size:10.5px; font-weight:600; color:rgba(255,255,255,0.5);">
+                Checking...
+              </div>
+            </div>
+            <div style="font-size:10.5px; color:rgba(255,255,255,0.6); margin-bottom:10px;">
+              Official Meta Cloud API integration for automated backend messaging.
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <div>
+                <label style="font-size:10px; color:rgba(255,255,255,0.6); display:block; margin-bottom:2px;">Phone Number ID:</label>
+                <input type="text" id="wa-biz-phone-id" placeholder="e.g. 104829104928104" style="width:100%; box-sizing:border-box; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.15); color:#fff; padding:6px 10px; border-radius:6px; font-size:12px;" />
+              </div>
+              <div>
+                <label style="font-size:10px; color:rgba(255,255,255,0.6); display:block; margin-bottom:2px;">WABA ID (WhatsApp Business Account ID):</label>
+                <input type="text" id="wa-biz-waba-id" placeholder="e.g. 192837465019283" style="width:100%; box-sizing:border-box; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.15); color:#fff; padding:6px 10px; border-radius:6px; font-size:12px;" />
+              </div>
+              <div>
+                <label style="font-size:10px; color:rgba(255,255,255,0.6); display:block; margin-bottom:2px;">Meta Cloud API Access Token:</label>
+                <input type="password" id="wa-biz-token" placeholder="EAABw..." style="width:100%; box-sizing:border-box; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.15); color:#fff; padding:6px 10px; border-radius:6px; font-size:12px;" />
+              </div>
+              <div style="display:flex; gap:8px; margin-top:4px;">
+                <button id="wa-btn-save-biz" style="flex:1; background:#00e676; border:none; color:#06140E; padding:7px 12px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;">
+                  ✓ Save Business Credentials
+                </button>
+                <button id="wa-btn-disc-biz" style="display:none; background:rgba(255,69,58,0.15); border:1px solid rgba(255,69,58,0.3); color:#ff453a; padding:7px 12px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer;">
+                  Disconnect
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. APPEARANCE -->
         <div>
           <div style="font-size:11px; font-weight:700; color:rgba(255,255,255,0.5); letter-spacing:0.5px; margin-bottom:10px;">🎨 APPEARANCE</div>
           <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;">
@@ -226,14 +340,144 @@ export class SettingsModal {
         e.target.style.background = '#6C5CE7';
       });
     });
+
+    // ── WhatsApp Tab Switching ──
+    const tabPersonal = this.element.querySelector('#tab-btn-wa-personal');
+    const tabBusiness = this.element.querySelector('#tab-btn-wa-business');
+    const panelPersonal = this.element.querySelector('#wa-panel-personal');
+    const panelBusiness = this.element.querySelector('#wa-panel-business');
+
+    if (tabPersonal && tabBusiness) {
+      tabPersonal.addEventListener('click', () => {
+        panelPersonal.style.display = 'block';
+        panelBusiness.style.display = 'none';
+        tabPersonal.style.background = 'rgba(37,211,102,0.2)';
+        tabPersonal.style.borderColor = '#25D366';
+        tabPersonal.style.color = '#fff';
+        tabBusiness.style.background = 'rgba(255,255,255,0.05)';
+        tabBusiness.style.borderColor = 'rgba(255,255,255,0.1)';
+        tabBusiness.style.color = 'rgba(255,255,255,0.7)';
+      });
+
+      tabBusiness.addEventListener('click', () => {
+        panelPersonal.style.display = 'none';
+        panelBusiness.style.display = 'block';
+        tabBusiness.style.background = 'rgba(37,211,102,0.2)';
+        tabBusiness.style.borderColor = '#25D366';
+        tabBusiness.style.color = '#fff';
+        tabPersonal.style.background = 'rgba(255,255,255,0.05)';
+        tabPersonal.style.borderColor = 'rgba(255,255,255,0.1)';
+        tabPersonal.style.color = 'rgba(255,255,255,0.7)';
+        this.refreshWhatsAppStatus();
+      });
+    }
+
+    // ── WhatsApp Personal AI Draft ──
+    const aiDraftBtn = this.element.querySelector('#wa-btn-ai-draft');
+    const waMsgInput = this.element.querySelector('#wa-input-message');
+    if (aiDraftBtn && waMsgInput) {
+      aiDraftBtn.addEventListener('click', async () => {
+        const promptInstruction = prompt('What message would you like AI to draft?', 'I will arrive at 5 PM');
+        if (!promptInstruction) return;
+        try {
+          aiDraftBtn.textContent = '✨ Drafting...';
+          const draftRes = await controlPlane.generateAIDraft(promptInstruction);
+          if (draftRes && draftRes.draft) {
+            waMsgInput.value = draftRes.draft;
+          }
+        } catch (e) {
+          alert('Failed to generate draft: ' + e.message);
+        } finally {
+          aiDraftBtn.textContent = '✨ AI Draft';
+        }
+      });
+    }
+
+    // ── WhatsApp Personal Send (Click-to-Chat) ──
+    const personalSendBtn = this.element.querySelector('#wa-btn-send-personal');
+    const waPhoneInput = this.element.querySelector('#wa-input-phone');
+    if (personalSendBtn && waPhoneInput && waMsgInput) {
+      personalSendBtn.addEventListener('click', async () => {
+        const phone = waPhoneInput.value.trim();
+        const msg = waMsgInput.value.trim();
+        if (!phone) {
+          alert('Please enter a recipient phone number with country code (e.g. +91 9876543210).');
+          return;
+        }
+        if (!msg) {
+          alert('Please enter a message to send.');
+          return;
+        }
+
+        try {
+          personalSendBtn.textContent = 'Preparing...';
+          const prepRes = await controlPlane.preparePersonalWhatsApp(phone, msg);
+          if (prepRes && prepRes.wa_url) {
+            window.open(prepRes.wa_url, '_blank', 'noopener,noreferrer');
+            alert('WhatsApp opened! Please review and click Send inside WhatsApp to dispatch.\n\nNote: As a personal account, MITRA cannot verify message delivery automatically.');
+          }
+        } catch (err) {
+          alert('Validation error: ' + err.message);
+        } finally {
+          personalSendBtn.innerHTML = '📲 Open &amp; Send on WhatsApp';
+        }
+      });
+    }
+
+    // ── WhatsApp Business Credential Save ──
+    const saveBizBtn = this.element.querySelector('#wa-btn-save-biz');
+    const bizPhoneInput = this.element.querySelector('#wa-biz-phone-id');
+    const bizWabaInput = this.element.querySelector('#wa-biz-waba-id');
+    const bizTokenInput = this.element.querySelector('#wa-biz-token');
+    if (saveBizBtn && bizPhoneInput && bizWabaInput && bizTokenInput) {
+      saveBizBtn.addEventListener('click', async () => {
+        const phoneId = bizPhoneInput.value.trim();
+        const wabaId = bizWabaInput.value.trim();
+        const token = bizTokenInput.value.trim();
+
+        if (!phoneId || !token) {
+          alert('Phone Number ID and Meta Access Token are required.');
+          return;
+        }
+
+        try {
+          saveBizBtn.textContent = 'Saving...';
+          await controlPlane.connectBusinessWhatsApp(phoneId, wabaId, token);
+          alert('Meta WhatsApp Business credentials successfully saved and encrypted!');
+          this.refreshWhatsAppStatus();
+        } catch (err) {
+          alert('Failed to connect WhatsApp Business: ' + err.message);
+        } finally {
+          saveBizBtn.textContent = '✓ Save Business Credentials';
+        }
+      });
+    }
+
+    // ── WhatsApp Business Disconnect ──
+    const discBizBtn = this.element.querySelector('#wa-btn-disc-biz');
+    if (discBizBtn) {
+      discBizBtn.addEventListener('click', async () => {
+        if (confirm('Disconnect Meta WhatsApp Business Platform credentials?')) {
+          try {
+            await controlPlane.disconnectBusinessWhatsApp();
+            alert('WhatsApp Business credentials disconnected.');
+            this.refreshWhatsAppStatus();
+          } catch (err) {
+            alert('Failed to disconnect: ' + err.message);
+          }
+        }
+      });
+    }
   }
 
   open() {
     this.element.style.display = 'flex';
     this.refreshGoogleStatus();
+    this.refreshWhatsAppStatus();
   }
 
   close() {
     this.element.style.display = 'none';
   }
 }
+

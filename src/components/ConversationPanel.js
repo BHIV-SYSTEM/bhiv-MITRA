@@ -609,29 +609,44 @@ export class ConversationPanel {
 
     } else if (capability === 'whatsapp') {
       const waData = backendData.whatsapp || backendData || {};
-      const isSuccess = waData.status === 'success' || backendData.status === 'success';
+      const isSuccess = waData.status === 'success' || backendData.status === 'success' || waData.status === 'ready' || waData.status === 'sent';
       const recipient = waData.to || waData.recipient || backendData.to || '';
       let cleanPhone = (recipient || '').replace(/[^\d]/g, '');
       if (cleanPhone.length === 10 && /^[6789]/.test(cleanPhone)) {
         cleanPhone = '91' + cleanPhone;
       }
       const displayPhone = cleanPhone ? (cleanPhone.startsWith('91') && cleanPhone.length === 12 ? `+${cleanPhone.slice(0, 2)} ${cleanPhone.slice(2, 7)} ${cleanPhone.slice(7)}` : `+${cleanPhone}`) : recipient;
-      const msgText = waData.message || resultText || '';
-      const note = waData.note || backendData.note || '';
+      const msgText = waData.message || waData.content || resultText || '';
+      const note = waData.notice || waData.note || backendData.note || '';
+      const isPersonal = waData.mode === 'personal' || waData.provider === 'personal_click_to_chat' || (!waData.mode && !waData.provider_message_id && !waData.message_id);
+      const waUrl = waData.url || waData.wa_url || (cleanPhone ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msgText)}` : '');
       const statusColor = isSuccess ? '#25D366' : '#ff453a';
-      const statusLabel = isSuccess ? 'Dispatched ✓' : 'Failed ✗';
-      const waUrl = cleanPhone ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msgText)}` : '';
+      const statusLabel = isPersonal ? 'Review & Send ✍️' : (isSuccess ? 'Dispatched via Meta API ✓' : 'Failed ✗');
+      const cardTitle = isPersonal ? '💬 PERSONAL WHATSAPP (CLICK-TO-CHAT)' : '💼 BUSINESS WHATSAPP (META CLOUD API)';
 
       widgetContent = `
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid rgba(255, 255, 255, 0.1); padding-bottom:6px;">
-          <div style="font-weight:700; font-size:13px; color:#25D366; display:flex; align-items:center; gap:6px;">💬 WHATSAPP ACTION</div>
+          <div style="font-weight:700; font-size:13px; color:#25D366; display:flex; align-items:center; gap:6px;">${cardTitle}</div>
           <span style="font-size:10px; background:rgba(37,211,102,0.15); color:${statusColor}; padding:2px 6px; border-radius:4px; font-weight:600;">${statusLabel}</span>
         </div>
         <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; font-size:12px;">
           ${recipient ? `<div style="font-weight:600; color:#fff; font-size:12px; margin-bottom:4px;">📞 Recipient: ${this.escapeHtml(displayPhone)}</div>` : ''}
-          <div style="color:rgba(255,255,255,0.85); font-size:12px; margin-bottom:6px;">💬 "${this.escapeHtml(msgText)}"</div>
+          <div style="color:rgba(255,255,255,0.85); font-size:12px; margin-bottom:6px; background:rgba(0,0,0,0.25); padding:8px; border-radius:6px; border:1px solid rgba(255,255,255,0.08); font-style:italic;">💬 "${this.escapeHtml(msgText)}"</div>
+          ${isPersonal ? `
+            <div style="font-size:10.5px; color:#ffd93d; margin-bottom:8px; background:rgba(255,217,61,0.08); border:1px solid rgba(255,217,61,0.2); padding:6px 8px; border-radius:6px; line-height:1.4;">
+              ⚠️ <strong>Personal WhatsApp Notice:</strong> Opening the chat does not automatically send the message. You must review and tap Send inside WhatsApp. Mitra cannot verify personal message delivery.
+            </div>
+          ` : `
+            ${waData.provider_message_id ? `<div style="font-size:10px; color:rgba(255,255,255,0.5); margin-bottom:4px;">Meta Message ID: <code>${this.escapeHtml(waData.provider_message_id)}</code></div>` : ''}
+          `}
           ${note ? `<div style="font-size:10px; color:#a29bfe; margin-bottom:6px;">ℹ️ ${this.escapeHtml(note)}</div>` : ''}
-          ${waUrl ? `<div style="margin-top:6px;"><a href="${waUrl}" target="_blank" rel="noopener noreferrer" style="background:#25D366; color:#000; padding:4px 10px; border-radius:6px; font-size:10px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">📲 Open in WhatsApp Web</a></div>` : ''}
+          ${waUrl ? `
+            <div style="margin-top:6px;">
+              <a href="${waUrl}" target="_blank" rel="noopener noreferrer" style="background:#25D366; color:#06140E; padding:6px 14px; border-radius:6px; font-size:11px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 8px rgba(37,211,102,0.3);">
+                <span>📲</span> Open &amp; Send on WhatsApp
+              </a>
+            </div>
+          ` : ''}
         </div>
       `;
 

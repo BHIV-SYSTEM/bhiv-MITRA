@@ -1338,6 +1338,93 @@ export class ControlPlane {
     });
     return await response.json();
   }
+
+  // ─── WHATSAPP INTEGRATIONS (PERSONAL & BUSINESS) ──────────────────────────
+
+  /**
+   * Validate recipient phone and generate official wa.me Click to Chat URL.
+   */
+  async preparePersonalWhatsApp(phone, message, countryCode = '91') {
+    const res = await fetch(`${getApiBaseUrl()}/api/whatsapp/personal/prepare`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({ phone, message, country_code: countryCode })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to prepare personal WhatsApp link.');
+    }
+    return await res.json();
+  }
+
+  /**
+   * Generate an AI-assisted WhatsApp draft from natural language instruction.
+   */
+  async generateAIDraft(instruction, recipientName = '', tone = 'friendly') {
+    const res = await fetch(`${getApiBaseUrl()}/api/whatsapp/personal/draft`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({ instruction, recipient_name: recipientName, tone })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to generate AI draft.');
+    }
+    return await res.json();
+  }
+
+  /**
+   * Get Meta WhatsApp Business connection status.
+   */
+  async getBusinessWhatsAppStatus() {
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/whatsapp/business/status`, {
+        method: 'GET',
+        headers: buildHeaders()
+      });
+      if (res.ok) return await res.json();
+    } catch (e) {
+      console.warn('[ControlPlane] Failed to fetch WhatsApp business status:', e);
+    }
+    return { status: 'disconnected', mode: 'business' };
+  }
+
+  /**
+   * Connect Meta WhatsApp Business credentials.
+   */
+  async connectBusinessWhatsApp(phoneNumberId, wabaId, accessToken, phoneDisplayNumber = '') {
+    const res = await fetch(`${getApiBaseUrl()}/api/whatsapp/business/connect`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({
+        phone_number_id: phoneNumberId,
+        waba_id: wabaId,
+        access_token: accessToken,
+        phone_display_number: phoneDisplayNumber
+      })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to connect Meta WhatsApp Business account.');
+    }
+    return await res.json();
+  }
+
+  /**
+   * Disconnect Meta WhatsApp Business credentials.
+   */
+  async disconnectBusinessWhatsApp() {
+    const res = await fetch(`${getApiBaseUrl()}/api/whatsapp/business/disconnect`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({})
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to disconnect WhatsApp Business account.');
+    }
+    return await res.json();
+  }
 }
 
 export const controlPlane = new ControlPlane();
