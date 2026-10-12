@@ -2,29 +2,32 @@ import { eventBus } from './eventBus.js';
 import { contextStore } from './contextStore.js';
 
 export function getApiBaseUrl() {
-  let url = 'https://mitra.blackholeinfiverse.com';
   if (typeof window !== 'undefined' && window.__MITRA_API_BASE_URL) {
-    url = window.__MITRA_API_BASE_URL;
-  } else if (typeof document !== 'undefined') {
-    const attr = document.querySelector('mitra-companion')?.getAttribute('api-base-url');
-    if (attr) url = attr;
-  } else if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
-    url = 'http://localhost:8001';
+    return window.__MITRA_API_BASE_URL;
   }
-  return url.replace(/\/+$/, '').replace(/\/api$/i, '').replace(/\/+$/, '');
+  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    return 'http://localhost:8001';
+  }
+  if (typeof document !== 'undefined') {
+    const attr = document.querySelector('mitra-companion')?.getAttribute('api-base-url');
+    if (attr) return attr;
+  }
+  return 'https://mitra.blackholeinfiverse.com';
 }
 
-const API_KEY = 'localtest';
+const API_KEY = 'bhiv-enterprise-key';
 
-/** Build request headers strictly complying with OpenAPI requirement. */
+/** Build request headers strictly complying with OpenAPI and JWT auth requirements. */
 function buildHeaders() {
   const headers = {
     'Content-Type': 'application/json',
     'X-API-Key': API_KEY,
   };
-  const token = (typeof window !== 'undefined' && (localStorage.getItem('mitra_auth_token') || localStorage.getItem('authToken'))) || '';
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+  if (typeof localStorage !== 'undefined') {
+    const token = localStorage.getItem('token') || localStorage.getItem('authToken') || localStorage.getItem('jwt');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
   }
   return headers;
 }
@@ -44,25 +47,12 @@ export class ControlPlane {
    */
   getHostContext() {
     const pathname = typeof window !== 'undefined' ? window.location.pathname || '' : '';
-    const hostname = typeof window !== 'undefined' ? window.location.hostname || '' : '';
-    
-    // Explicit attribute override: <mitra-companion host-app="artha">
-    if (typeof document !== 'undefined') {
-      const explicitHost = document.querySelector('mitra-companion')?.getAttribute('host-app');
-      if (explicitHost) {
-        return {
-          host_app: explicitHost,
-          current_page: pathname || window.location.href
-        };
-      }
-    }
-
     let hostApp = 'dashboard';
-    if (hostname.includes('artha') || pathname.includes('/pages/artha') || pathname.includes('/pages/samruddhi')) hostApp = 'artha';
-    else if (hostname.includes('samachar') || pathname.includes('/pages/samachar')) hostApp = 'samachar';
-    else if (hostname.includes('uniguru') || pathname.includes('/pages/uniguru')) hostApp = 'uniguru';
-    else if (hostname.includes('gurukul') || pathname.includes('/pages/gurukul')) hostApp = 'gurukul';
-    else if (hostname.includes('setu') || pathname.includes('/pages/setu')) hostApp = 'setu';
+    if (pathname.includes('/pages/samachar')) hostApp = 'samachar';
+    else if (pathname.includes('/pages/uniguru')) hostApp = 'uniguru';
+    else if (pathname.includes('/pages/gurukul')) hostApp = 'gurukul';
+    else if (pathname.includes('/pages/samruddhi')) hostApp = 'samruddhi';
+    else if (pathname.includes('/pages/setu')) hostApp = 'setu';
 
     return {
       host_app: hostApp,
@@ -164,30 +154,15 @@ export class ControlPlane {
         });
         return { status: 'ok' };
       }
-
-      // ── EMAIL (Show config-pending card — SMTP not set on Render) ─────
-      if (/\b(send|email|mail)\b.+@.+\.\w+/i.test(preText) || (/\b(email|mail)\b/i.test(preText) && /@/.test(preText))) {
-        const emailAddr = preText.match(/([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/)?.[1] || 'recipient';
-        const subjMatch = preText.match(/(?:saying|subject|about)\s+(.+?)$/i);
-        const subj = subjMatch?.[1]?.slice(0, 60) || 'Message from MITRA';
-        eventBus.emit('health.changed', { status: 'Healthy' });
-        contextStore.addMessage('mitra', `Email to ${emailAddr} — pending backend config`, { intent: 'email' });
-        eventBus.emit('capability.completed', {
-          capability: 'email',
-          duration: '0.1s',
-          result: `Email to ${emailAddr}`,
-          data: { capability: 'email', email: { status: 'error', to: emailAddr, subject: subj, error: 'SMTP credentials (EMAIL_USER / EMAIL_PASSWORD) not configured on Raj\'s Render backend. Add them to enable real email sending.', method: 'none' } }
-        });
-        return { status: 'ok' };
-      }
       // ═══════════════════════════════════════════════════════════════════
 
       eventBus.emit('health.changed', { status: 'Executing' });
-      let response = await fetch(`${getApiBaseUrl()}/api/companion/chat`, {
+      const response = await fetch(`${getApiBaseUrl()}/api/companion/chat`, {
         method: 'POST',
         headers: buildHeaders(),
         body: JSON.stringify(payload),
       });
+
 
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) {
@@ -393,27 +368,25 @@ export class ControlPlane {
         }
       }
 
-      // ── EMAIL INTERCEPT ──────────────────────────────────────────────
-      // Backend returns "Unknown error" for email — SMTP credentials not set on Render.
-      // Show a clear, structured error card instead of raw "Unknown error".
+      // ── EMAIL / GMAIL REAL BACKEND INTEGRATION ─────────────────────────
       if (intent === 'email' && replyText.toLowerCase().includes("couldn't complete")) {
         const emailMatch = trimmedText.match(/(?:to|email)\s+([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/i);
         const toAddr = emailMatch?.[1] || 'recipient';
         const subjMatch = trimmedText.match(/(?:saying|subject|about)\s+(.+?)$/i);
         const emailSubj = subjMatch?.[1]?.slice(0, 60) || 'Message from MITRA';
-        replyText = `Email to ${toAddr} — Backend not configured`;
+        replyText = `Google Workspace (Gmail) connection required to send email to ${toAddr}.`;
         capabilityResult = {
           capability: 'email',
-          status: 'error',
+          status: 'needs_auth',
           summary: replyText,
           data: {
             capability: 'email',
             email: {
-              status: 'error',
+              status: 'needs_auth',
               to: toAddr,
               subject: emailSubj,
-              error: 'EMAIL_USER / EMAIL_PASSWORD not configured on Render backend. Ask Raj to add SMTP credentials to the Render environment variables.',
-              method: 'none'
+              error: 'Please connect your Google Workspace account to read, draft, and send emails via MITRA.',
+              method: 'google_oauth'
             },
             result: replyText
           }
@@ -533,24 +506,6 @@ export class ControlPlane {
           };
           replyText = 'Samachar news intelligence retrieved successfully.';
         }
-      }
-
-      // ── ARTHA / SAMRUDDHI FINANCIAL LEDGER FORMATTING ──────────────
-      const isArthaQuery = (capabilityResult && (capabilityResult.capability === 'artha' || capabilityResult.capability === 'samruddhi'))
-        || (hostCtx.host_app === 'artha' && /\b(balance|ledger|portfolio|financial|invoice|revenue|expense|asset|liability|tally|accounting)\b/i.test(trimmedText));
-
-      if (isArthaQuery && !capabilityResult && replyText) {
-        intent = 'artha';
-        capabilityResult = {
-          capability: 'artha',
-          status: 'success',
-          summary: 'Artha financial ledger analytics retrieved.',
-          data: {
-            capability: 'artha',
-            company_name: 'Artha Financial Analytics',
-            result: replyText
-          }
-        };
       }
 
       if (data.session_id) contextStore.setSessionId(data.session_id);
@@ -949,23 +904,69 @@ export class ControlPlane {
           params: params,
           user_id: userId
         };
-        const response = await fetch(`${getApiBaseUrl()}/api/companion/execute`, {
+        let response = await fetch(`${getApiBaseUrl()}/api/companion/execute`, {
           method: 'POST',
           headers: buildHeaders(),
           body: JSON.stringify(payload),
         });
-        if (!response.ok) throw new Error(`Email failed: HTTP ${response.status}`);
+
+        // Auto-heal 401s caused by expired JWT in localStorage
+        if (response.status === 401) {
+          if (typeof localStorage !== 'undefined') {
+            localStorage.removeItem('token');
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('jwt');
+            localStorage.removeItem('mitra_auth_token');
+          }
+          response = await fetch(`${getApiBaseUrl()}/api/companion/execute`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+            body: JSON.stringify(payload),
+          });
+        }
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            return {
+              status: 'executed',
+              result: {
+                status: 'needs_auth',
+                summary: 'Authentication required. Please connect your Google account in Settings.',
+                email: {
+                  status: 'needs_auth',
+                  to: params.to,
+                  subject: params.subject,
+                  error: 'Session expired or Google account not connected. Please connect Google Workspace.',
+                  requires_google_oauth: true
+                }
+              }
+            };
+          }
+          throw new Error(`Email failed: HTTP ${response.status}`);
+        }
         const data = await response.json();
         const result = data.result || {};
         eventBus.emit('health.changed', { status: 'Healthy' });
-        // result.status may be 'success' or 'error'
-        const isSuccess = result.status === 'success';
-        const summary = isSuccess
-          ? `Email sent to ${result.to || params.to} — Subject: "${result.subject || params.subject}"`
-          : `Email failed: ${result.error || 'Unknown backend error'}`;
+        // result.status may be 'success', 'sent', 'confirmation_required', or 'error'
+        const isSuccess = result.status === 'success' || result.status === 'sent';
+        const isConfirm = result.status === 'confirmation_required';
+        let summary;
+        if (isSuccess) {
+          summary = `Email sent to ${result.to || params.to} — Subject: "${result.subject || params.subject}"`;
+        } else if (isConfirm) {
+          summary = `Email staged — Confirmation required before sending to ${result.confirmation?.recipient || result.confirmation?.target || params.to}`;
+        } else {
+          summary = `Email failed: ${result.error || 'Unknown backend error'}`;
+        }
         return {
           status: 'executed',
-          result: { status: result.status || 'unknown', summary, email: result }
+          result: {
+            status: result.status || 'unknown',
+            summary,
+            email: result,
+            pending_action_id: result.pending_action_id || result.action_id,
+            confirmation: result.confirmation
+          }
         };
       }
 
@@ -978,11 +979,24 @@ export class ControlPlane {
           params: params,
           user_id: userId
         };
-        const response = await fetch(`${getApiBaseUrl()}/api/companion/execute`, {
+        let response = await fetch(`${getApiBaseUrl()}/api/companion/execute`, {
           method: 'POST',
           headers: buildHeaders(),
           body: JSON.stringify(payload),
         });
+        if (response.status === 401) {
+          if (typeof localStorage !== 'undefined') {
+            localStorage.removeItem('token');
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('jwt');
+            localStorage.removeItem('mitra_auth_token');
+          }
+          response = await fetch(`${getApiBaseUrl()}/api/companion/execute`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+            body: JSON.stringify(payload),
+          });
+        }
         if (!response.ok) throw new Error(`WhatsApp failed: HTTP ${response.status}`);
         const data = await response.json();
         const result = data.result || {};
@@ -1235,6 +1249,94 @@ export class ControlPlane {
     } catch {
       return null;
     }
+  }
+
+  // ─── GOOGLE OAUTH & INTEGRATIONS ──────────────────────────────────────────
+
+  /**
+   * Initiate Google OAuth PKCE flow.
+   * Returns { url: string, state: string } for redirect/popup.
+   */
+  async startGoogleOAuth(purpose = 'connect') {
+    const res = await fetch(`${getApiBaseUrl()}/api/oauth/google/start?purpose=${encodeURIComponent(purpose)}`, {
+      method: 'GET',
+      headers: buildHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to initiate Google OAuth flow.');
+    }
+    return await res.json();
+  }
+
+  /**
+   * Fetch connected integration accounts (Google, Microsoft, GitHub, WhatsApp).
+   */
+  async getConnections() {
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/connections`, {
+        method: 'GET',
+        headers: buildHeaders(),
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.warn('[ControlPlane] Failed to fetch connections:', e);
+    }
+    return { connections: [] };
+  }
+
+  /**
+   * Disconnect a linked account (e.g., 'google').
+   */
+  async disconnectGoogle() {
+    const res = await fetch(`${getApiBaseUrl()}/api/connections/google`, {
+      method: 'DELETE',
+      headers: buildHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to disconnect Google account.');
+    }
+    return await res.json();
+  }
+
+  /**
+   * Confirm and dispatch a staged communication action (B.COMM-3 approval policy).
+   */
+  async confirmCommunicationAction(pendingActionId) {
+    let response = await fetch(`${getApiBaseUrl()}/api/communication/actions/${encodeURIComponent(pendingActionId)}/confirm`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({})
+    });
+    if (response.status === 401) {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem('token');
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('jwt');
+        localStorage.removeItem('mitra_auth_token');
+      }
+      response = await fetch(`${getApiBaseUrl()}/api/communication/actions/${encodeURIComponent(pendingActionId)}/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+        body: JSON.stringify({})
+      });
+    }
+    return await response.json();
+  }
+
+  /**
+   * Cancel a staged communication action.
+   */
+  async cancelCommunicationAction(pendingActionId) {
+    const response = await fetch(`${getApiBaseUrl()}/api/communication/actions/${encodeURIComponent(pendingActionId)}/cancel`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({})
+    });
+    return await response.json();
   }
 }
 

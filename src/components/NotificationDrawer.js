@@ -1,4 +1,5 @@
 import { contextStore } from '../services/contextStore.js';
+import { getApiBaseUrl } from '../services/controlPlane.js';
 
 /**
  * NotificationDrawer.js — Reusable Right-Side Sliding Notification Drawer Component
@@ -97,7 +98,7 @@ export class NotificationDrawer {
       const headers = { 'X-API-Key': 'bhiv-enterprise-key' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const res = await fetch(`https://mitra-backend-q1f3.onrender.com/api/v1/notifications/${encodeURIComponent(userId)}`, { headers });
+      const res = await fetch(`${getApiBaseUrl()}/api/v1/notifications/${encodeURIComponent(userId)}`, { headers });
       if (res.ok) {
         const data = await res.json();
         const apiNotifs = (data.notifications || []).map(n => ({
@@ -136,7 +137,7 @@ export class NotificationDrawer {
 
       this.notifications.forEach(n => {
         if (!n.id.startsWith('local_')) {
-          fetch(`https://mitra-backend-q1f3.onrender.com/api/v1/notifications/${n.id}/read`, {
+          fetch(`${getApiBaseUrl()}/api/v1/notifications/${n.id}/read`, {
             method: 'PATCH',
             headers,
             body: JSON.stringify({ read: true })
