@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,16 +8,24 @@
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+    rel="stylesheet">
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
     body {
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
       background: #0B0B0F;
       color: #FFFFFF;
       min-height: 100vh;
-      padding-top: 64px; /* for navbar */
+      padding-top: 64px;
+      /* for navbar */
     }
 
     /* Hero section */
@@ -33,16 +42,19 @@
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      background: rgba(108,92,231,0.15);
-      border: 1px solid rgba(108,92,231,0.3);
+      background: rgba(108, 92, 231, 0.15);
+      border: 1px solid rgba(108, 92, 231, 0.3);
       border-radius: 100px;
       padding: 7px 16px;
       font-size: 13px;
       font-weight: 500;
-      color: rgba(255,255,255,0.75);
+      color: rgba(255, 255, 255, 0.75);
       margin-bottom: 32px;
     }
-    .badge-icon { font-size: 14px; }
+
+    .badge-icon {
+      font-size: 14px;
+    }
 
     .hero-title {
       font-size: clamp(36px, 6vw, 64px);
@@ -53,11 +65,14 @@
       margin-bottom: 24px;
       color: #FFFFFF;
     }
-    .hero-title span { color: rgba(255,255,255,0.55); }
+
+    .hero-title span {
+      color: rgba(255, 255, 255, 0.55);
+    }
 
     .hero-sub {
       font-size: 16px;
-      color: rgba(255,255,255,0.5);
+      color: rgba(255, 255, 255, 0.5);
       max-width: 560px;
       line-height: 1.7;
       margin-bottom: 48px;
@@ -83,7 +98,10 @@
       cursor: pointer;
       transition: opacity 0.2s;
     }
-    .btn-primary:hover { opacity: 0.88; }
+
+    .btn-primary:hover {
+      opacity: 0.88;
+    }
 
     .btn-secondary {
       background: transparent;
@@ -93,11 +111,14 @@
       padding: 14px 32px;
       border-radius: 10px;
       text-decoration: none;
-      border: 1px solid rgba(255,255,255,0.15);
+      border: 1px solid rgba(255, 255, 255, 0.15);
       cursor: pointer;
       transition: background 0.2s;
     }
-    .btn-secondary:hover { background: rgba(255,255,255,0.06); }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.06);
+    }
 
     /* Product cards */
     .products {
@@ -105,14 +126,16 @@
       margin: 0 auto;
       padding: 0 40px 80px;
     }
+
     .product-grid {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
       gap: 16px;
     }
+
     .product-card {
       background: #15151D;
-      border: 1px solid rgba(255,255,255,0.07);
+      border: 1px solid rgba(255, 255, 255, 0.07);
       border-radius: 14px;
       padding: 28px 24px;
       display: flex;
@@ -122,27 +145,31 @@
       color: #FFFFFF;
       transition: border-color 0.2s, background 0.2s;
     }
+
     .product-card:hover {
-      border-color: rgba(108,92,231,0.35);
+      border-color: rgba(108, 92, 231, 0.35);
       background: #1a1a24;
     }
+
     .product-icon {
       width: 44px;
       height: 44px;
       border-radius: 10px;
-      background: rgba(108,92,231,0.15);
+      background: rgba(108, 92, 231, 0.15);
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 22px;
     }
+
     .product-name {
       font-size: 15px;
       font-weight: 700;
     }
+
     .product-desc {
       font-size: 12px;
-      color: rgba(255,255,255,0.4);
+      color: rgba(255, 255, 255, 0.4);
       line-height: 1.5;
     }
 
@@ -151,23 +178,35 @@
       text-align: center;
       padding: 32px 40px;
       font-size: 13px;
-      color: rgba(255,255,255,0.25);
-      border-top: 1px solid rgba(255,255,255,0.05);
+      color: rgba(255, 255, 255, 0.25);
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
     }
 
     @media (max-width: 900px) {
-      .product-grid { grid-template-columns: repeat(2, 1fr); }
+      .product-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
     }
+
     @media (max-width: 480px) {
-      .product-grid { grid-template-columns: 1fr; }
-      .hero { padding: 64px 20px 48px; }
-      .products { padding: 0 20px 48px; }
+      .product-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .hero {
+        padding: 64px 20px 48px;
+      }
+
+      .products {
+        padding: 0 20px 48px;
+      }
     }
   </style>
 </head>
+
 <body>
   <mitra-navbar></mitra-navbar>
-  <script type="module" src="src/components/Navbar.js"></script>
+  <script type="module" src="src/components/Navbar.js?v=10"></script>
 
   <!-- Hero -->
   <section class="hero">
@@ -218,9 +257,23 @@
   </div>
 
   <!-- MITRA Companion -->
-  <mitra-companion stylesheet-path="styles/mitra-companion.css?v=8" api-base-url="http://localhost:8001"></mitra-companion>
-  <script type="module" src="src/mitra-companion.js?v=8"></script>
+  <mitra-companion stylesheet-path="styles/mitra-companion.css?v=v25"
+    api-base-url="http://localhost:8001"></mitra-companion>
+  <script type="module" src="src/mitra-companion.js?v=v25"></script>
+  <script>
+    // Guarantee clean floating orb visibility on index.html
+    try {
+      const raw = localStorage.getItem('mitra_context_store');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.dockMode !== 'floating' || parsed.position) {
+          parsed.dockMode = 'floating';
+          parsed.position = null;
+          localStorage.setItem('mitra_context_store', JSON.stringify(parsed));
+        }
+      }
+    } catch (e) { }
+  </script>
 </body>
+
 </html>
-
-

@@ -203,6 +203,92 @@ class CompanionOrchestrator:
         # Store original user turn exactly once in session history
         await session_manager.add_turn(user_id, role="user", content=message)
 
+        # 2.5. Check Conversational Confirmation / Cancellation of Pending Communication Actions (HITL B.COMM-3)
+        from app.services.pending_action_service import pending_action_service
+        from app.services.communication_service import communication_service
+
+        msg_clean = message.strip()
+        msg_lower = msg_clean.lower()
+        pact_match = re.search(r'\b(pact_[a-f0-9]{12,32})\b', msg_clean, re.IGNORECASE)
+        specific_pact_id = pact_match.group(1) if pact_match else None
+
+        is_confirm_phrase = bool(re.match(r'^(?:yes|confirm|send|send it|confirm send|proceed|yes send it|ok send it|yes please|confirm it)\b', msg_lower)) or bool(specific_pact_id and "confirm" in msg_lower)
+        is_cancel_phrase = bool(re.match(r'^(?:no|cancel|don\'t send|abort|stop)\b', msg_lower)) or bool(specific_pact_id and "cancel" in msg_lower)
+
+        if is_confirm_phrase or is_cancel_phrase:
+            pending_act = (
+                pending_action_service.get_pending_action(specific_pact_id, user_id)
+                if specific_pact_id
+                else pending_action_service.get_latest_active_pending_action(user_id)
+            )
+
+            if pending_act and pending_act.status == "PENDING":
+                if is_confirm_phrase:
+                    comm_res = communication_service.confirm_pending_action(
+                        pending_action_id=pending_act.pending_action_id,
+                        user_id=user_id,
+                        trace_id=ctx.trace_id,
+                    )
+                    cap_result_data = comm_res.to_dict()
+                    if comm_res.status in ("sent", "ready", "success"):
+                        response_text = (
+                            f"✅ WhatsApp message successfully dispatched to {pending_act.recipient} via Meta Cloud API!\n"
+                            f"(Status: Accepted by Meta, awaiting delivery confirmation receipt)."
+                        )
+                    else:
+                        response_text = f"❌ WhatsApp dispatch failed: {comm_res.error or comm_res.message}"
+
+                    yield {
+                        "type": "capability_result",
+                        "request_id": ctx.execution_id,
+                        "capability": "whatsapp",
+                        "status": "success" if comm_res.status in ("sent", "ready", "success") else "failed",
+                        "summary": response_text,
+                        "data": self._sanitize_client_data(cap_result_data),
+                    }
+                    yield {
+                        "type": "assistant_delta",
+                        "request_id": ctx.execution_id,
+                        "delta": response_text,
+                    }
+                    yield {
+                        "type": "message_complete",
+                        "request_id": ctx.execution_id,
+                        "message": response_text,
+                        "intent": "whatsapp",
+                        "capability_result": self._sanitize_client_data(cap_result_data),
+                    }
+                    await session_manager.add_turn(user_id, role="assistant", content=response_text)
+                    return
+
+                elif is_cancel_phrase:
+                    success, err, data = pending_action_service.cancel_pending_action(
+                        pending_action_id=pending_act.pending_action_id,
+                        user_id=user_id,
+                    )
+                    response_text = f"🚫 WhatsApp message to {pending_act.recipient} has been cancelled."
+                    yield {
+                        "type": "capability_result",
+                        "request_id": ctx.execution_id,
+                        "capability": "whatsapp",
+                        "status": "cancelled",
+                        "summary": response_text,
+                        "data": {"status": "cancelled", "pending_action_id": pending_act.pending_action_id},
+                    }
+                    yield {
+                        "type": "assistant_delta",
+                        "request_id": ctx.execution_id,
+                        "delta": response_text,
+                    }
+                    yield {
+                        "type": "message_complete",
+                        "request_id": ctx.execution_id,
+                        "message": response_text,
+                        "intent": "whatsapp",
+                    }
+                    await session_manager.add_turn(user_id, role="assistant", content=response_text)
+                    return
+
         # 3. Classify intent
         intent_data = intent_flow.process_text(message)
         intent = intent_data.get("intent", "general")

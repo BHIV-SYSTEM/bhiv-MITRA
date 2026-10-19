@@ -363,6 +363,43 @@ class PendingActionService:
             if pending_action_id in _IN_MEMORY_PENDING_ACTIONS:
                 _IN_MEMORY_PENDING_ACTIONS[pending_action_id].update(fields)
 
+    def get_latest_active_pending_action(self, user_id: str) -> Optional[PendingCommunicationAction]:
+        """Retrieve the most recent unexpired pending action awaiting confirmation for a user."""
+        clean_uid = str(user_id).strip()
+        now_iso = datetime.utcnow().isoformat()
+
+        # Check in MongoDB
+        db = _get_db()
+        if db is not None:
+            try:
+                coll = db[self.collection_name]
+                doc = coll.find_one(
+                    {
+                        "$or": [{"user_id": clean_uid}, {"user_id": "user_default"}],
+                        "status": "PENDING",
+                        "expires_at": {"$gt": now_iso}
+                    },
+                    sort=[("created_at", -1)]
+                )
+                if doc:
+                    doc.pop("_id", None)
+                    return PendingCommunicationAction(**doc)
+            except Exception as e:
+                logger.debug(f"Failed to query latest pending action in MongoDB: {e}")
+
+        # Check in-memory store
+        with _IN_MEMORY_LOCK:
+            active = []
+            for doc in _IN_MEMORY_PENDING_ACTIONS.values():
+                if doc.get("user_id") in (clean_uid, "user_default") and doc.get("status") == "PENDING":
+                    if doc.get("expires_at", "") > now_iso:
+                        active.append(doc)
+            if active:
+                active.sort(key=lambda d: d.get("created_at", ""), reverse=True)
+                return PendingCommunicationAction(**active[0])
+
+        return None
+
     def _tamper_action_for_testing(
         self, pending_action_id: str, fields: Dict[str, Any]
     ) -> None:

@@ -50,8 +50,10 @@ class BusinessConnectRequest(BaseModel):
 
 class BusinessSendRequest(BaseModel):
     to_phone: str = Field(..., description="Recipient phone number in international format")
-    message: str = Field(..., description="Text content to transmit via Meta Cloud API")
-    template_name: Optional[str] = Field(None, description="Optional pre-approved template name")
+    message: Optional[str] = Field(None, description="Text content to transmit via Meta Cloud API (required if not using a template)")
+    template_name: Optional[str] = Field(None, description="Optional pre-approved template name (e.g. hello_world)")
+    language_code: Optional[str] = Field("en_US", description="Template language code (defaults to en_US)")
+    components: Optional[list] = Field(None, description="Optional template components/parameters")
 
 
 # ── 1. PERSONAL WHATSAPP (CLICK-TO-CHAT MVP) ──
@@ -232,12 +234,16 @@ async def send_business_message(req: BusinessSendRequest, user_id: Optional[str]
         res = client.send_template_message(
             to_phone=req.to_phone,
             template_name=req.template_name,
+            language_code=req.language_code or "en_US",
+            components=req.components,
             user_id=user_id
         )
     else:
+        if not (req.message and req.message.strip()):
+            raise HTTPException(status_code=400, detail="message is required when template_name is not provided.")
         res = client.send_text_message(
             to_phone=req.to_phone,
-            message=req.message,
+            message=req.message.strip(),
             user_id=user_id
         )
 
@@ -258,9 +264,18 @@ async def verify_meta_webhook(
     """
     Handles official Meta Webhook challenge verification.
     """
-    configured_token = os.getenv("META_WA_WEBHOOK_VERIFY_TOKEN", "mitra_wa_verify_token_secure")
+    configured_tokens = [
+        t.strip()
+        for t in (
+            os.getenv("META_WA_WEBHOOK_VERIFY_TOKEN"),
+            os.getenv("WHATSAPP_VERIFY_TOKEN"),
+            os.getenv("META_VERIFY_TOKEN"),
+        )
+        if t and t.strip()
+    ] or ["mitra_wa_verify_token_secure"]
     
-    if hub_mode == "subscribe" and hub_verify_token == configured_token:
+    import hmac
+    if hub_mode == "subscribe" and hub_verify_token and any(hmac.compare_digest(hub_verify_token, ct) for ct in configured_tokens):
         logger.info("Meta WhatsApp Webhook subscription verified successfully.")
         return PlainTextResponse(content=hub_challenge or "", status_code=200)
 

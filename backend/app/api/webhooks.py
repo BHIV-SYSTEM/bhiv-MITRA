@@ -28,8 +28,16 @@ async def whatsapp_webhook_verify(request: Request):
     token = request.query_params.get("hub.verify_token")
     challenge = request.query_params.get("hub.challenge")
 
-    verify_token = (os.getenv("WHATSAPP_VERIFY_TOKEN") or os.getenv("META_VERIFY_TOKEN") or "").strip()
-    if mode == "subscribe" and token and verify_token and hmac.compare_digest(token, verify_token):
+    valid_tokens = [
+        t.strip()
+        for t in (
+            os.getenv("META_WA_WEBHOOK_VERIFY_TOKEN"),
+            os.getenv("WHATSAPP_VERIFY_TOKEN"),
+            os.getenv("META_VERIFY_TOKEN"),
+        )
+        if t and t.strip()
+    ]
+    if mode == "subscribe" and token and any(hmac.compare_digest(token, vt) for vt in valid_tokens):
         return int(challenge) if challenge and challenge.isdigit() else (challenge or "ok")
     raise HTTPException(status_code=403, detail="Verification failed")
 

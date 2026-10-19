@@ -115,6 +115,32 @@ def generate_personal_wa_link(phone: str, message: str, default_country_code: st
     }
 
 
+class UnsafeCoexistenceOperationError(RuntimeError):
+    """Raised when an API call attempts to execute registration or deregistration on a Coexistence number."""
+    pass
+
+
+FORBIDDEN_COEXISTENCE_PATTERNS = [
+    re.compile(r"/(?:de)?register\b", re.IGNORECASE),
+    re.compile(r"/(?:request_code|verify_code)\b", re.IGNORECASE),
+]
+
+
+def assert_safe_whatsapp_endpoint(endpoint_path_or_url: str) -> None:
+    """
+    Validates endpoint construction at the API boundary.
+    Strictly forbids registration, deregistration, and 2FA migration calls
+    that would terminate the active WhatsApp Business mobile app session.
+    """
+    clean_url = str(endpoint_path_or_url or "").strip()
+    for pattern in FORBIDDEN_COEXISTENCE_PATTERNS:
+        if pattern.search(clean_url):
+            raise UnsafeCoexistenceOperationError(
+                f"CRITICAL SAFEGUARD BLOCKED: Endpoint '{clean_url}' is strictly forbidden in Coexistence mode. "
+                "Registration or deregistration calls sever the active WhatsApp Business mobile app session."
+            )
+
+
 class MetaWhatsAppExecutor:
     """
     Official Meta WhatsApp Business Platform / Cloud API Client.
@@ -124,9 +150,47 @@ class MetaWhatsAppExecutor:
     def __init__(self):
         self.api_version = os.getenv("META_WA_API_VERSION", "v19.0")
         self.graph_base_url = f"https://graph.facebook.com/{self.api_version}"
-        self.system_access_token = os.getenv("META_WA_ACCESS_TOKEN", "").strip()
-        self.system_phone_number_id = os.getenv("META_WA_PHONE_NUMBER_ID", "").strip()
-        self.system_waba_id = os.getenv("META_WA_WABA_ID", "").strip()
+        self.system_access_token = (
+            os.getenv("META_WA_ACCESS_TOKEN")
+            or os.getenv("WHATSAPP_CLOUD_ACCESS_TOKEN")
+            or os.getenv("WHATSAPP_ACCESS_TOKEN")
+            or ""
+        ).strip()
+        self.system_phone_number_id = (
+            os.getenv("META_WA_PHONE_NUMBER_ID")
+            or os.getenv("WHATSAPP_CLOUD_PHONE_NUMBER_ID")
+            or os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+            or ""
+        ).strip()
+        self.system_waba_id = (
+            os.getenv("META_WA_WABA_ID")
+            or os.getenv("WHATSAPP_CLOUD_WABA_ID")
+            or os.getenv("WHATSAPP_WABA_ID")
+            or ""
+        ).strip()
+
+    def _execute_graph_post(
+        self,
+        phone_id: str,
+        subpath: str,
+        payload: Dict[str, Any],
+        token: str
+    ) -> requests.Response:
+        """
+        Shared API boundary for all Meta WhatsApp Graph API POST requests.
+        Enforces safety assertions and strict endpoint validation before any network request.
+        """
+        endpoint = f"/{phone_id}/{subpath.lstrip('/')}"
+        assert_safe_whatsapp_endpoint(endpoint)
+
+        url = f"{self.graph_base_url}/{phone_id}/{subpath.lstrip('/')}"
+        assert_safe_whatsapp_endpoint(url)
+
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+        return requests.post(url, json=payload, headers=headers, timeout=12)
 
     def get_credentials(self, user_id: Optional[str] = None) -> Dict[str, str]:
         """
@@ -188,11 +252,6 @@ class MetaWhatsAppExecutor:
                 "mode": "business"
             }
 
-        url = f"{self.graph_base_url}/{phone_id}/messages"
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
-        }
         payload = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
@@ -205,7 +264,7 @@ class MetaWhatsAppExecutor:
         }
 
         try:
-            resp = requests.post(url, json=payload, headers=headers, timeout=12)
+            resp = self._execute_graph_post(phone_id, "messages", payload, token)
             res_json = resp.json()
 
             if resp.status_code in (200, 201):
@@ -225,12 +284,48 @@ class MetaWhatsAppExecutor:
                 }
             else:
                 error_info = res_json.get("error", {})
-                msg = error_info.get("message") or f"Meta Cloud API returned HTTP {resp.status_code}"
+                raw_msg = error_info.get("message") or f"Meta Cloud API returned HTTP {resp.status_code}"
                 code = error_info.get("code")
+                error_subcode = error_info.get("error_subcode")
+                fbtrace_id = error_info.get("fbtrace_id")
+                
+                # Specialized error classifications
+                if code in (190, 102):
+                    err_code = "META_AUTH_ERROR_190"
+                    user_friendly_msg = (
+                        "Meta WhatsApp Cloud API Authentication Error (Code 190): "
+                        "Access token is expired, invalid, or revoked. "
+                        "Please update META_WA_ACCESS_TOKEN in backend/.env or reconnect your Meta WhatsApp Business account in Settings."
+                    )
+                elif code == 131047:
+                    err_code = "META_24H_WINDOW_EXPIRED"
+                    user_friendly_msg = (
+                        "24-Hour Customer Service Window Closed (Code 131047): "
+                        "More than 24 hours have passed since this recipient last messaged your WhatsApp Business number. "
+                        "Meta Cloud API policy prohibits free-form text outside the 24-hour window. "
+                        "You must initiate the conversation using an approved Meta message template (e.g. 'hello_world')."
+                    )
+                elif code in (131030, 131026):
+                    err_code = "META_RECIPIENT_INELIGIBLE"
+                    user_friendly_msg = (
+                        f"Recipient {norm['formatted']} is ineligible (Code {code}): "
+                        "Phone number is not on WhatsApp or, if using a Meta Test number, recipient is not added to the To list in Meta App Dashboard."
+                    )
+                elif code in (80007, 130429):
+                    err_code = "META_RATE_LIMITED"
+                    user_friendly_msg = "Meta WhatsApp Cloud API rate limit reached. Please retry after a few minutes."
+                else:
+                    err_code = f"META_API_ERROR_{code}" if code else "META_API_ERROR"
+                    user_friendly_msg = raw_msg
+
                 return {
                     "status": "error",
-                    "error": msg,
-                    "error_code": f"META_API_ERROR_{code}" if code else "META_API_ERROR",
+                    "error": user_friendly_msg,
+                    "raw_error": raw_msg,
+                    "error_code": err_code,
+                    "meta_code": code,
+                    "meta_subcode": error_subcode,
+                    "fbtrace_id": fbtrace_id,
                     "details": error_info,
                     "mode": "business"
                 }
@@ -271,11 +366,6 @@ class MetaWhatsAppExecutor:
                 "error_code": "CREDENTIALS_MISSING"
             }
 
-        url = f"{self.graph_base_url}/{phone_id}/messages"
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
-        }
         payload = {
             "messaging_product": "whatsapp",
             "to": norm["digits_only"],
@@ -288,7 +378,7 @@ class MetaWhatsAppExecutor:
         }
 
         try:
-            resp = requests.post(url, json=payload, headers=headers, timeout=12)
+            resp = self._execute_graph_post(phone_id, "messages", payload, token)
             res_json = resp.json()
             if resp.status_code in (200, 201):
                 messages = res_json.get("messages", [])
@@ -303,10 +393,21 @@ class MetaWhatsAppExecutor:
                     "trace_id": trace_id
                 }
             else:
+                error_info = res_json.get("error", {})
+                code = error_info.get("code")
+                raw_msg = error_info.get("message") or "Meta template dispatch failed"
+                if code in (190, 102):
+                    err_code = "META_AUTH_ERROR_190"
+                    user_msg = "Meta WhatsApp Cloud API Authentication Error (Code 190): Access token expired or invalid."
+                else:
+                    err_code = f"META_API_ERROR_{code}" if code else "META_API_ERROR"
+                    user_msg = raw_msg
                 return {
                     "status": "error",
-                    "error": res_json.get("error", {}).get("message") or "Meta template dispatch failed",
-                    "details": res_json.get("error", {})
+                    "error": user_msg,
+                    "raw_error": raw_msg,
+                    "error_code": err_code,
+                    "details": error_info
                 }
         except Exception as exc:
             return {"status": "error", "error": str(exc), "error_code": "NETWORK_FAILURE"}

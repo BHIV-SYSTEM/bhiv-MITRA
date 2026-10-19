@@ -130,10 +130,20 @@ class CommunicationService:
             return matched_email, None
 
         elif channel == CommunicationChannel.WHATSAPP:
-            wa_conn = connected_account_service.get_user_connection(user_id=user_id, provider="whatsapp")
+            wa_conn = (
+                connected_account_service.get_user_connection(user_id=user_id, provider="whatsapp_business")
+                or connected_account_service.get_user_connection(user_id=user_id, provider="whatsapp")
+            )
             matched_phone = None
             if wa_conn and (wa_conn.get("email") or wa_conn.get("provider_account_id")):
                 matched_phone = wa_conn.get("email") or wa_conn.get("provider_account_id")
+
+            if not matched_phone:
+                from app.executors.meta_whatsapp_executor import MetaWhatsAppExecutor
+                meta_exec = MetaWhatsAppExecutor()
+                creds = meta_exec.get_credentials(user_id=user_id)
+                if creds.get("phone_number_id"):
+                    matched_phone = creds.get("phone_number_id")
 
             if not matched_phone:
                 try:
@@ -236,17 +246,23 @@ class CommunicationService:
                 sender_account=sender_account,
             )
 
+            recip_name = None
+            if action.metadata and isinstance(action.metadata, dict):
+                recip_name = action.metadata.get("contact_name") or action.metadata.get("display_label")
+
             confirmation_payload = CommunicationConfirmationPayload(
                 channel=action.channel,
                 pending_action_id=pending_action.pending_action_id,
                 sender_account=sender_account,
                 recipient=action.recipient,
+                recipient_name=recip_name,
                 subject=action.subject,
                 content=action.content,
                 action="SEND_MESSAGE",
                 idempotency_key=idempotency_key,
                 expires_at=pending_action.expires_at,
                 requires_confirmation=True,
+                metadata=action.metadata or {},
             )
 
             logger.info(
@@ -514,6 +530,13 @@ class CommunicationService:
                 action_mode = action.metadata.get("mode")
             if not action_mode and hasattr(action, "mode"):
                 action_mode = getattr(action, "mode")
+            if not action_mode:
+                from app.executors.meta_whatsapp_executor import MetaWhatsAppExecutor
+                import os
+                env_cloud = os.getenv("WHATSAPP_PROVIDER", "").strip().lower() == "cloud" or os.getenv("WHATSAPP_MODE", "").strip().lower() == "business"
+                meta_exec = MetaWhatsAppExecutor()
+                has_creds = bool(meta_exec.get_credentials(user_id=user_id).get("access_token"))
+                action_mode = "business" if (env_cloud or has_creds) else "personal"
 
             exec_res = self.whatsapp_executor.send_message(
                 to_number=action.recipient,
@@ -521,7 +544,7 @@ class CommunicationService:
                 trace_id=trace_id,
                 user_id=user_id,
                 is_system_otp=False,
-                mode=action_mode or "personal",
+                mode=action_mode,
             )
 
             # Map both Meta Cloud API (business) and Personal Click to Chat (wa.me)

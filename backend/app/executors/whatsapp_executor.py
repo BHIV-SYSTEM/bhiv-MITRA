@@ -103,16 +103,22 @@ class WhatsAppExecutor:
         from app.executors.meta_whatsapp_executor import MetaWhatsAppExecutor, generate_personal_wa_link, normalize_e164_phone
 
         # Determine mode: "personal" (default Click to Chat) vs "business" (Meta Cloud API)
-        # Check explicit mode parameter or fallback gracefully
         clean_user = str(user_id).strip() if user_id else "user_default"
-        chosen_mode = (mode or getattr(self, "_active_mode", "personal") or "personal").lower()
-
         meta_client = MetaWhatsAppExecutor()
         creds = meta_client.get_credentials(user_id=clean_user)
         has_business_creds = bool(creds.get("access_token") and creds.get("phone_number_id"))
 
+        env_cloud = os.getenv("WHATSAPP_PROVIDER", "").strip().lower() == "cloud" or os.getenv("WHATSAPP_MODE", "").strip().lower() == "business"
+        explicit_mode = mode or getattr(self, "_active_mode", None)
+        if explicit_mode:
+            chosen_mode = explicit_mode.lower()
+        elif env_cloud or has_business_creds:
+            chosen_mode = "business"
+        else:
+            chosen_mode = "personal"
+
         # If business mode requested or explicitly configured, execute through Meta Cloud API
-        if chosen_mode == "business" or (has_business_creds and chosen_mode != "personal"):
+        if chosen_mode == "business":
             res = meta_client.send_text_message(
                 to_phone=to_number,
                 message=message,

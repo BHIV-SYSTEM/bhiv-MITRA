@@ -32,16 +32,32 @@
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
-    <!--
-      This HTML file is a template.
-      If you open it directly in the browser, you will see an empty page.
 
-      You can add webfonts, meta tags, or analytics to this file.
-      The build step will place the bundled scripts into the <body> tag.
-
-      To begin the development, run `npm start` or `yarn start`.
-      To create a production bundle, use `npm run build` or `yarn build`.
-    -->
+    <style>
+      mitra-companion {
+        display: block;
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 999999;
+      }
+    </style>
+    <!-- MITRA Companion Chatbot -->
+    <mitra-companion hide-fab="true" stylesheet-path="/styles/mitra-companion.css?v=v30" api-base-url="http://localhost:8001"></mitra-companion>
+    <script type="module" src="/src/mitra-companion.js?v=v30"></script>
+    <script>
+      // Clean floating orb on initial load
+      try {
+        const raw = localStorage.getItem('mitra_context_store');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          parsed.dockMode = 'floating';
+          parsed.position = null;
+          parsed.windowState = 'minimized';
+          localStorage.setItem('mitra_context_store', JSON.stringify(parsed));
+        }
+      } catch (e) { }
+    </script>
   </body>
 </html>
 

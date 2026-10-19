@@ -230,7 +230,7 @@ def test_whatsapp_executor_personal_mode_returns_click_to_chat():
 
 def test_whatsapp_executor_business_mode_without_creds_fails_safely():
     executor = WhatsAppExecutor()
-    with patch.dict(os.environ, {"META_WA_ACCESS_TOKEN": "", "META_WA_PHONE_NUMBER_ID": ""}, clear=True):
+    with patch.dict(os.environ, {"META_WA_ACCESS_TOKEN": "", "META_WA_PHONE_NUMBER_ID": "", "WHATSAPP_CLOUD_ACCESS_TOKEN": "", "WHATSAPP_CLOUD_PHONE_NUMBER_ID": ""}, clear=True):
         res = executor.send_message(
             to_number="9876543210",
             message="Hello Mitra Business test",
@@ -241,3 +241,53 @@ def test_whatsapp_executor_business_mode_without_creds_fails_safely():
         assert res["status"] == "error"
         assert res["error_code"] == "CREDENTIALS_MISSING"
         assert "credentials not configured" in res["error"].lower()
+
+
+# ── 7. BUSINESS SEND ENDPOINT TESTS ──
+
+def test_business_send_template_endpoint():
+    with patch.dict(os.environ, {"META_WA_ACCESS_TOKEN": "test_tok", "META_WA_PHONE_NUMBER_ID": "104829104928104"}):
+        with patch.object(MetaWhatsAppExecutor, "_execute_graph_post") as mock_post:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = {
+                "messaging_product": "whatsapp",
+                "contacts": [{"input": "919876543210", "wa_id": "919876543210"}],
+                "messages": [{"id": "wamid.test_tpl_123"}]
+            }
+            mock_post.return_value = mock_resp
+
+            payload = {
+                "to_phone": "+919876543210",
+                "template_name": "hello_world"
+            }
+            res = client.post("/api/whatsapp/business/send", json=payload)
+            assert res.status_code == 200
+            data = res.json()
+            assert data["status"] == "success"
+            assert data["message_id"] == "wamid.test_tpl_123"
+            assert data["template"] == "hello_world"
+
+
+def test_business_send_text_endpoint():
+    with patch.dict(os.environ, {"WHATSAPP_CLOUD_ACCESS_TOKEN": "test_tok", "WHATSAPP_CLOUD_PHONE_NUMBER_ID": "104829104928104"}, clear=True):
+        with patch.object(MetaWhatsAppExecutor, "_execute_graph_post") as mock_post:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = {
+                "messaging_product": "whatsapp",
+                "contacts": [{"input": "919876543210", "wa_id": "919876543210"}],
+                "messages": [{"id": "wamid.test_text_456"}]
+            }
+            mock_post.return_value = mock_resp
+
+            payload = {
+                "to_phone": "+919876543210",
+                "message": "Hello from MITRA!"
+            }
+            res = client.post("/api/whatsapp/business/send", json=payload)
+            assert res.status_code == 200
+            data = res.json()
+            assert data["status"] == "success"
+            assert data["message_id"] == "wamid.test_text_456"
+

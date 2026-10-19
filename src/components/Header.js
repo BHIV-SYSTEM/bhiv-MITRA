@@ -44,7 +44,8 @@ export class Header {
       });
     }
 
-    this.element.querySelector('#btn-minimize').addEventListener('click', () => {
+    this.element.querySelector('#btn-minimize').addEventListener('click', (e) => {
+      e.stopPropagation();
       if (onMinimize) onMinimize();
     });
 
@@ -94,7 +95,7 @@ export class Header {
     dot.setAttribute('title', titleText);
 
     const sLower = (status || '').toLowerCase();
-    
+
     if (sLower === 'healthy' || sLower === 'success' || sLower === 'recovered') {
       dot.style.background = '#00e676';
       dot.style.boxShadow = '0 0 8px #00e676';

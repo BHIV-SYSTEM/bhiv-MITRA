@@ -10,6 +10,7 @@ import { cn } from '../../lib/utils';
 import { useCompanionStore, resolveDisplayName } from '../../store/companion.store';
 import CompanionDot from '../primitives/CompanionDot';
 import NotificationDropdown from './NotificationDropdown';
+import CompanionSwitcher from './CompanionSwitcher';
 
 interface Props { onSearch?: () => void; }
 
@@ -92,6 +93,9 @@ const TopBar: React.FC<Props> = ({ onSearch }) => {
 
         {/* ── ZONE 3 (RIGHT): Search, Tools, Notifications, Profile, Context ── */}
         <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+          {/* Mitra Companion Switcher (Persona & Avatar Selector at user requested position) */}
+          <CompanionSwitcher />
+
           {/* Search Trigger */}
           <button
             id="topbar-search"

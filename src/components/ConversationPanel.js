@@ -609,44 +609,92 @@ export class ConversationPanel {
 
     } else if (capability === 'whatsapp') {
       const waData = backendData.whatsapp || backendData || {};
-      const isSuccess = waData.status === 'success' || backendData.status === 'success' || waData.status === 'ready' || waData.status === 'sent';
-      const recipient = waData.to || waData.recipient || backendData.to || '';
-      let cleanPhone = (recipient || '').replace(/[^\d]/g, '');
-      if (cleanPhone.length === 10 && /^[6789]/.test(cleanPhone)) {
-        cleanPhone = '91' + cleanPhone;
-      }
-      const displayPhone = cleanPhone ? (cleanPhone.startsWith('91') && cleanPhone.length === 12 ? `+${cleanPhone.slice(0, 2)} ${cleanPhone.slice(2, 7)} ${cleanPhone.slice(7)}` : `+${cleanPhone}`) : recipient;
-      const msgText = waData.message || waData.content || resultText || '';
-      const note = waData.notice || waData.note || backendData.note || '';
-      const isPersonal = waData.mode === 'personal' || waData.provider === 'personal_click_to_chat' || (!waData.mode && !waData.provider_message_id && !waData.message_id);
-      const waUrl = waData.url || waData.wa_url || (cleanPhone ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msgText)}` : '');
-      const statusColor = isSuccess ? '#25D366' : '#ff453a';
-      const statusLabel = isPersonal ? 'Review & Send ✍️' : (isSuccess ? 'Dispatched via Meta API ✓' : 'Failed ✗');
-      const cardTitle = isPersonal ? '💬 PERSONAL WHATSAPP (CLICK-TO-CHAT)' : '💼 BUSINESS WHATSAPP (META CLOUD API)';
+      const confPayload = waData.confirmation || backendData.confirmation || {};
+      const isPendingConfirm = waData.status === 'confirmation_required' || backendData.status === 'confirmation_required' || backendData.status === 'pending' || waData.status === 'pending';
+      const pendingActionId = waData.pending_action_id || backendData.pending_action_id || confPayload.pending_action_id || (waData.data && waData.data.pending_action_id) || '';
+      const isSuccess = waData.status === 'success' || waData.status === 'sent' || backendData.status === 'sent' || waData.status === 'ready';
+      const isError = !isPendingConfirm && !isSuccess && (waData.status === 'failed' || waData.status === 'error' || backendData.status === 'failed');
 
-      widgetContent = `
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid rgba(255, 255, 255, 0.1); padding-bottom:6px;">
-          <div style="font-weight:700; font-size:13px; color:#25D366; display:flex; align-items:center; gap:6px;">${cardTitle}</div>
-          <span style="font-size:10px; background:rgba(37,211,102,0.15); color:${statusColor}; padding:2px 6px; border-radius:4px; font-weight:600;">${statusLabel}</span>
-        </div>
-        <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; font-size:12px;">
-          ${recipient ? `<div style="font-weight:600; color:#fff; font-size:12px; margin-bottom:4px;">📞 Recipient: ${this.escapeHtml(displayPhone)}</div>` : ''}
-          <div style="color:rgba(255,255,255,0.85); font-size:12px; margin-bottom:6px; background:rgba(0,0,0,0.25); padding:8px; border-radius:6px; border:1px solid rgba(255,255,255,0.08); font-style:italic;">💬 "${this.escapeHtml(msgText)}"</div>
-          ${isPersonal ? `
-            <div style="font-size:10.5px; color:#ffd93d; margin-bottom:8px; background:rgba(255,217,61,0.08); border:1px solid rgba(255,217,61,0.2); padding:6px 8px; border-radius:6px; line-height:1.4;">
-              ⚠️ <strong>Personal WhatsApp Notice:</strong> Opening the chat does not automatically send the message. You must review and tap Send inside WhatsApp. Mitra cannot verify personal message delivery.
-            </div>
-          ` : `
-            ${waData.provider_message_id ? `<div style="font-size:10px; color:rgba(255,255,255,0.5); margin-bottom:4px;">Meta Message ID: <code>${this.escapeHtml(waData.provider_message_id)}</code></div>` : ''}
-          `}
-          ${note ? `<div style="font-size:10px; color:#a29bfe; margin-bottom:6px;">ℹ️ ${this.escapeHtml(note)}</div>` : ''}
-          ${waUrl ? `
-            <div style="margin-top:6px;">
+      const recipient = waData.recipient_display || confPayload.recipient_name || confPayload.recipient || waData.recipient || waData.to || backendData.to || '';
+      const recipientPhone = waData.recipient_phone || confPayload.recipient || waData.to || backendData.to || '';
+      const senderAccount = waData.sender_account || confPayload.sender_account || 'Meta WhatsApp Business Cloud API';
+      const msgText = waData.exact_message || confPayload.content || (waData.action && waData.action.content) || (waData.message && !waData.message.includes('Explicit confirmation') ? waData.message : '') || (resultText && !resultText.includes('Confirmation required') ? resultText : '') || '';
+      const note = waData.notice || waData.note || backendData.note || '';
+      const errorMsg = waData.error || backendData.error || '';
+      const isPersonal = !isPendingConfirm && (waData.mode === 'personal' || confPayload.mode === 'personal' || waData.provider === 'personal_click_to_chat');
+
+      let statusColor = '#25D366';
+      let statusLabel = 'Dispatched via Meta API ✓';
+      let cardTitle = '💼 BUSINESS WHATSAPP (META CLOUD API)';
+
+      if (isPendingConfirm) {
+        statusColor = '#ffb700';
+        statusLabel = 'Approval Required ⏳';
+        cardTitle = '💬 WHATSAPP CONFIRMATION REQUIRED';
+      } else if (isPersonal) {
+        statusColor = '#25D366';
+        statusLabel = 'Review & Send ✍️';
+        cardTitle = '💬 PERSONAL WHATSAPP (CLICK-TO-CHAT)';
+      } else if (isError) {
+        statusColor = '#ff453a';
+        statusLabel = 'Failed ✗';
+        cardTitle = '⚠️ WHATSAPP ACTION FAILED';
+      }
+
+      let actionButtons = '';
+      if (isPendingConfirm) {
+        actionButtons = `
+          <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="btn-whatsapp-confirm-send" ${pendingActionId ? `data-action-id="${this.escapeHtml(pendingActionId)}"` : ''} style="background:#25D366; border:none; color:#06140E; padding:8px 16px; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 10px rgba(37,211,102,0.3);">
+              <span>✅</span> Confirm &amp; Send via WhatsApp
+            </button>
+            <button class="btn-whatsapp-cancel-send" ${pendingActionId ? `data-action-id="${this.escapeHtml(pendingActionId)}"` : ''} style="background:rgba(255,59,48,0.18); border:1px solid rgba(255,59,48,0.4); color:#ff453a; padding:8px 12px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer;">
+              Cancel
+            </button>
+          </div>
+        `;
+
+      } else if (isPersonal) {
+        const waUrl = waData.url || waData.wa_url || (recipientPhone ? `https://wa.me/${recipientPhone.replace(/[^\d]/g, '')}?text=${encodeURIComponent(msgText)}` : '');
+        if (waUrl) {
+          actionButtons = `
+            <div style="margin-top:8px;">
               <a href="${waUrl}" target="_blank" rel="noopener noreferrer" style="background:#25D366; color:#06140E; padding:6px 14px; border-radius:6px; font-size:11px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 8px rgba(37,211,102,0.3);">
                 <span>📲</span> Open &amp; Send on WhatsApp
               </a>
             </div>
+          `;
+        }
+      }
+
+      widgetContent = `
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid rgba(255, 255, 255, 0.1); padding-bottom:6px;">
+          <div style="font-weight:700; font-size:13px; color:#25D366; display:flex; align-items:center; gap:6px;">${cardTitle}</div>
+          <span class="wa-status-badge" style="font-size:10px; background:rgba(37,211,102,0.15); color:${statusColor}; padding:2px 8px; border-radius:4px; font-weight:600;">${statusLabel}</span>
+        </div>
+        <div style="background:rgba(255,255,255,0.05); padding:10px 12px; border-radius:8px; font-size:12px;">
+          ${recipient ? `<div style="font-weight:600; color:#fff; font-size:12.5px; margin-bottom:4px;">📞 Recipient: <span style="color:#25D366;">${this.escapeHtml(recipient)}</span></div>` : ''}
+          ${senderAccount && !isPersonal ? `<div style="font-size:11px; color:rgba(255,255,255,0.5); margin-bottom:6px;">🏢 Sender Account: ${this.escapeHtml(senderAccount)}</div>` : ''}
+          <div style="margin:8px 0; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); padding:10px; border-radius:6px;">
+            <div style="font-size:10px; color:rgba(255,255,255,0.4); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">Exact Message Preview:</div>
+            <div style="color:#ffffff; font-size:12.5px; white-space:pre-wrap;">${this.escapeHtml(msgText)}</div>
+          </div>
+          ${isPendingConfirm ? `
+            <div style="font-size:10.5px; color:#ffd93d; background:rgba(255,217,61,0.08); border:1px solid rgba(255,217,61,0.25); padding:6px 8px; border-radius:6px; line-height:1.4;">
+              🛡️ <strong>Confirmation Required:</strong> Please review the recipient number and exact message above. This message will only be dispatched upon your explicit confirmation.
+            </div>
           ` : ''}
+          ${isPersonal ? `
+            <div style="font-size:10.5px; color:#ffd93d; background:rgba(255,217,61,0.08); border:1px solid rgba(255,217,61,0.2); padding:6px 8px; border-radius:6px; line-height:1.4;">
+              ⚠️ <strong>Personal WhatsApp Notice:</strong> Opening the chat pre-fills your draft. You must review and tap Send inside WhatsApp. Mitra cannot verify personal delivery automatically.
+            </div>
+          ` : ''}
+          ${errorMsg ? `
+            <div style="margin-top:8px; font-size:11px; color:#ff453a; background:rgba(255,69,58,0.1); border:1px solid rgba(255,69,58,0.3); padding:8px 10px; border-radius:6px;">
+              ⚠️ ${this.escapeHtml(errorMsg)}
+            </div>
+          ` : ''}
+          ${actionButtons}
         </div>
       `;
 
@@ -1051,6 +1099,96 @@ export class ConversationPanel {
           }
         } catch (e) {
           if (cancelSendBtn.parentElement) cancelSendBtn.parentElement.remove();
+        }
+      });
+    }
+
+    // ── WhatsApp Confirmation & Cancellation Event Listeners ──
+    const confirmWaSendBtn = card.querySelector('.btn-whatsapp-confirm-send');
+    if (confirmWaSendBtn) {
+      confirmWaSendBtn.addEventListener('click', async () => {
+        const actionId = confirmWaSendBtn.getAttribute('data-action-id');
+        confirmWaSendBtn.textContent = 'Sending via Meta Cloud API...';
+        confirmWaSendBtn.disabled = true;
+        try {
+          const res = await controlPlane.confirmCommunicationAction(actionId);
+          if (res.status === 'sent' || res.status === 'success') {
+            const badge = card.querySelector('.wa-status-badge');
+            if (badge) {
+              badge.textContent = 'Accepted by Meta ✓';
+              badge.style.color = '#25D366';
+              badge.style.background = 'rgba(37, 211, 102, 0.15)';
+            }
+            const parent = confirmWaSendBtn.parentElement;
+            if (parent) {
+              parent.innerHTML = `
+                <div style="color:#25D366; font-size:11px; font-weight:700; display:flex; align-items:center; gap:6px;">
+                  <span>✅</span> Message accepted by Meta WhatsApp Business Cloud API!
+                </div>
+                <div style="color:rgba(255,255,255,0.5); font-size:10px; margin-top:2px;">
+                  Status: Handed off for delivery (Asynchronous delivery receipt pending).
+                </div>
+              `;
+            }
+          } else {
+            const errMsg = res.error || res.message || res.detail || 'Failed to dispatch WhatsApp message';
+            const parent = confirmWaSendBtn.parentElement;
+            if (parent) {
+              parent.innerHTML = `
+                <div style="background:rgba(255,59,48,0.1); border:1px solid rgba(255,59,48,0.3); padding:8px 10px; border-radius:6px; color:#ff453a; font-size:11px; margin-bottom:8px;">
+                  ⚠️ ${this.escapeHtml(errMsg)}
+                </div>
+                <div style="display:flex; gap:8px;">
+                  <button class="btn-retry-wa-confirm-send" style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:#fff; padding:6px 12px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer;">
+                    🔄 Retry
+                  </button>
+                  <button class="btn-open-settings-inline" style="background:#6C5CE7; border:none; color:#fff; padding:6px 12px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer;">
+                    ⚙️ Open Settings
+                  </button>
+                </div>
+              `;
+              const retryBtn = parent.querySelector('.btn-retry-wa-confirm-send');
+              if (retryBtn) {
+                retryBtn.addEventListener('click', () => {
+                  confirmWaSendBtn.textContent = '✅ Confirm & Send via WhatsApp';
+                  confirmWaSendBtn.disabled = false;
+                  parent.replaceChildren(confirmWaSendBtn, cancelWaSendBtn);
+                });
+              }
+              const settingsBtn = parent.querySelector('.btn-open-settings-inline');
+              if (settingsBtn) {
+                settingsBtn.addEventListener('click', () => {
+                  if (this.eventBus) this.eventBus.emit('settings.open_modal', {});
+                });
+              }
+            }
+          }
+        } catch (err) {
+          confirmWaSendBtn.textContent = '✅ Confirm & Send via WhatsApp';
+          confirmWaSendBtn.disabled = false;
+          const parent = confirmWaSendBtn.parentElement;
+          if (parent) {
+            const errDiv = document.createElement('div');
+            errDiv.style.cssText = 'color:#ff453a; font-size:11px; margin-top:6px;';
+            errDiv.textContent = 'Error: ' + err.message;
+            parent.appendChild(errDiv);
+          }
+        }
+      });
+    }
+
+    const cancelWaSendBtn = card.querySelector('.btn-whatsapp-cancel-send');
+    if (cancelWaSendBtn) {
+      cancelWaSendBtn.addEventListener('click', async () => {
+        const actionId = cancelWaSendBtn.getAttribute('data-action-id');
+        cancelWaSendBtn.textContent = 'Cancelling...';
+        try {
+          await controlPlane.cancelCommunicationAction(actionId);
+          if (cancelWaSendBtn.parentElement) {
+            cancelWaSendBtn.parentElement.innerHTML = '<div style="color:#a1a1aa; font-size:11px;">🚫 WhatsApp dispatch cancelled.</div>';
+          }
+        } catch (e) {
+          if (cancelWaSendBtn.parentElement) cancelWaSendBtn.parentElement.remove();
         }
       });
     }
