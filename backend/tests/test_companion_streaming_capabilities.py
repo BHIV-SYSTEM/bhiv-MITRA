@@ -35,6 +35,8 @@ from app.services.connected_account_service import connected_account_service
 from app.mitra_system_registry import mitra_registry
 from app.executors.email_executor import EmailExecutor
 from app.core.llm_bridge import llm_bridge
+from app.core.intentflow import intent_flow
+from app.capabilities.base_capability import CapabilityResult
 from app.models.communication import CommunicationAction, PendingCommunicationAction
 
 
@@ -504,5 +506,213 @@ def test_e2e_mocked_send_and_confirm_flow():
             )
             assert confirm_result.status in ("sent", "success")
             mock_email_send.assert_called_once()
+
+    asyncio.run(_run())
+
+
+def test_17_naked_internal_action_json_not_emitted_in_conversational_stream():
+    """17. Naked internal action JSON payload is intercepted and not emitted as ordinary conversational prose."""
+    async def _run():
+        user_id = f"test_user_leak_{uuid.uuid4().hex[:8]}"
+
+        # Mock LLM stream emitting conversational text followed by a naked action JSON payload
+        async def mock_stream(*args, **kwargs):
+            tokens = [
+                "I will help you with that.\n",
+                '{"action": "email", ',
+                '"parameters": {"to": "bob@example.com", "subject": "Hi"}}'
+            ]
+            for t in tokens:
+                yield t
+
+        with patch.object(llm_bridge, "stream_llm_with_messages", side_effect=mock_stream), \
+             patch.object(intent_flow, "process_text", return_value={"intent": "general"}):
+            deltas = []
+            final_message = ""
+            async for event in companion_orchestrator.process_stream(
+                user_id=user_id,
+                message="Give me advice on structuring my day"
+            ):
+                if event.get("type") == "assistant_delta":
+                    deltas.append(event.get("delta", ""))
+                elif event.get("type") == "message_complete":
+                    final_message = event.get("message", "")
+
+            emitted_text = "".join(deltas)
+            # The conversational preamble is preserved
+            assert "I will help you with that." in emitted_text
+            # The naked action envelope is suppressed and never reaches the user
+            assert '{"action": "email"' not in emitted_text
+            assert "bob@example.com" not in emitted_text
+            assert '{"action": "email"' not in final_message
+
+            # History turn must not contain the naked action payload
+            history = await session_manager.get_history(user_id)
+            assistant_turns = [h for h in history if h.get("role") == "assistant"]
+            assert len(assistant_turns) == 1
+            assert '{"action": "email"' not in assistant_turns[0].get("content", "")
+
+    asyncio.run(_run())
+
+
+def test_18_fenced_user_requested_json_remains_intact():
+    """18. Legitimate JSON inside Markdown code fences requested by user is preserved and streamed."""
+    async def _run():
+        user_id = f"test_user_fenced_{uuid.uuid4().hex[:8]}"
+
+        # Mock LLM stream emitting legitimate fenced JSON
+        async def mock_stream(*args, **kwargs):
+            tokens = [
+                "Here is the sample payload you asked for:\n```json\n",
+                '{\n  "action": "email",\n  "parameters": {"to": "test@example.com"}\n}\n',
+                "```\nLet me know if you need anything else!"
+            ]
+            for t in tokens:
+                yield t
+
+        with patch.object(llm_bridge, "stream_llm_with_messages", side_effect=mock_stream), \
+             patch.object(intent_flow, "process_text", return_value={"intent": "general"}):
+            deltas = []
+            async for event in companion_orchestrator.process_stream(
+                user_id=user_id,
+                message="Show me an example JSON payload in code fences"
+            ):
+                if event.get("type") == "assistant_delta":
+                    deltas.append(event.get("delta", ""))
+
+            emitted_text = "".join(deltas)
+            # The fenced code block and its JSON contents are fully preserved
+            assert "```json" in emitted_text
+            assert '"action": "email"' in emitted_text
+            assert "test@example.com" in emitted_text
+            assert "Let me know if you need anything else!" in emitted_text
+
+    asyncio.run(_run())
+
+
+def test_19_uniguru_displays_data_answer_on_success():
+    """19. When UniGuru succeeds and returns data['answer'], user receives the answer directly."""
+    from app.capabilities.base_capability import CapabilityResult
+
+    async def _run():
+        user_id = f"test_user_uniguru_{uuid.uuid4().hex[:8]}"
+        expected_answer = "Photosynthesis is the process by which green plants transform light energy into chemical energy."
+
+        with patch("app.companion.companion_orchestrator.capability_registry.execute") as mock_exec, \
+             patch.object(intent_flow, "process_text", return_value={"intent": "uniguru", "entities": {}}):
+
+            mock_exec.return_value = CapabilityResult(
+                capability="uniguru",
+                intent="knowledge",
+                status="success",
+                summary="Knowledge response from UniGuru Live HTTP API.",
+                data={
+                    "answer": expected_answer,
+                    "query": "explain photosynthesis",
+                    "latency_ms": 15.4,
+                    "source": "uniguru_live_api",
+                },
+            )
+            deltas = []
+            cap_results = []
+            final_message = ""
+            async for event in companion_orchestrator.process_stream(
+                user_id=user_id,
+                message="explain photosynthesis"
+            ):
+                if event.get("type") == "assistant_delta":
+                    deltas.append(event.get("delta", ""))
+                elif event.get("type") == "capability_result":
+                    cap_results.append(event)
+                elif event.get("type") == "message_complete":
+                    final_message = event.get("message", "")
+
+            emitted_text = "".join(deltas)
+            # User receives the actual educational answer directly
+            assert expected_answer in emitted_text
+            assert expected_answer in final_message
+            # Telemetry and engine confirms are NOT emitted as assistant prose
+            assert "15.4ms" not in emitted_text
+            assert "Done — Knowledge response" not in emitted_text
+
+            # Telemetry remains available internally in capability_result event data
+            assert len(cap_results) == 1
+            assert cap_results[0]["data"]["latency_ms"] == 15.4
+            assert cap_results[0]["data"]["source"] == "uniguru_live_api"
+
+    asyncio.run(_run())
+
+
+def test_20_raw_provider_json_and_exceptions_normalized():
+    """20. Raw provider errors, tracebacks, database details, and error codes are normalized into safe messages."""
+    from app.companion.personality_engine import normalize_error_message, personality_engine
+
+    # 1. CREDENTIALS_MISSING provides actionable settings guidance
+    cred_msg = personality_engine.build_capability_fail("CREDENTIALS_MISSING")
+    assert "Settings" in cred_msg or "connect" in cred_msg
+    assert "CREDENTIALS_MISSING" not in cred_msg
+
+    # 2. Raw exception traceback is normalized
+    raw_traceback = (
+        "Traceback (most recent call last):\n"
+        '  File "/app/backend/executors/email_executor.py", line 123, in send\n'
+        "psycopg2.OperationalError: connection to server on socket failed\n"
+        "InternalError: DB dead"
+    )
+    safe_trace = personality_engine.build_capability_fail(raw_traceback)
+    assert "Traceback" not in safe_trace
+    assert "psycopg2" not in safe_trace
+    assert "email_executor.py" not in safe_trace
+    assert "internal" in safe_trace.lower() or "connectivity" in safe_trace.lower() or "error" in safe_trace.lower()
+
+    # 3. Raw provider JSON error payload is normalized
+    raw_json_err = json.dumps({
+        "error": {
+            "code": 401,
+            "message": "Invalid OAuth access_token [Bearer secret_abc_123]",
+            "status": "UNAUTHENTICATED"
+        }
+    })
+    safe_json = personality_engine.build_capability_fail(raw_json_err)
+    assert "secret_abc_123" not in safe_json
+    assert "Bearer" not in safe_json
+    assert "Settings" in safe_json or "provider service returned an error" in safe_json
+
+    # 4. Safe user error message is preserved
+    clean_msg = "Please specify a valid email address for the recipient."
+    safe_user_msg = personality_engine.build_capability_fail(clean_msg)
+    assert "Please specify a valid email address for the recipient." in safe_user_msg
+
+
+def test_21_historical_naked_action_payloads_not_re_injected_into_llm_context():
+    """21. Legacy naked action JSON in session history is omitted when building LLM context."""
+    async def _run():
+        user_id = f"test_user_hist_{uuid.uuid4().hex[:8]}"
+
+        # Simulate older un-patched session with raw action JSON stored as assistant turn
+        await session_manager.get_or_create(user_id)
+        await session_manager.add_turn(user_id, "user", "Send an email")
+        await session_manager.add_turn(
+            user_id,
+            "assistant",
+            '{"action": "email", "parameters": {"to": "test@example.com"}}'
+        )
+
+        history = await session_manager.get_history(user_id)
+        messages = companion_orchestrator._build_llm_messages(
+            system_prompt="You are Mitra.",
+            history=history,
+            current_user_message="Now schedule a meeting",
+        )
+
+        # The raw action JSON must not appear in any message sent to the LLM
+        for msg in messages:
+            content = msg.get("content", "")
+            assert '{"action": "email"' not in content
+
+        # System prompt and current user message are present
+        assert messages[0]["role"] == "system"
+        assert messages[-1]["role"] == "user"
+        assert messages[-1]["content"] == "Now schedule a meeting"
 
     asyncio.run(_run())

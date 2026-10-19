@@ -21,6 +21,59 @@ export interface ChatResponse {
   suggested_actions?: string[];
 }
 
+export function isInternalActionPayload(obj: any): boolean {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
+  const keys = Object.keys(obj).map(k => k.toLowerCase());
+  const knownCaps = new Set([
+    'email', 'calendar', 'whatsapp', 'reminder', 'task', 'notes',
+    'contacts', 'notification', 'browser', 'document', 'uniguru', 'samachar', 'search', 'samruddhi'
+  ]);
+
+  if (keys.includes('action')) {
+    const actionVal = String(obj.action || '').toLowerCase();
+    if (keys.some(k => ['parameters', 'params', 'args', 'arguments', 'payload', 'input'].includes(k))) {
+      return true;
+    }
+    if (knownCaps.has(actionVal)) {
+      return true;
+    }
+  }
+
+  if (keys.some(k => ['tool', 'tool_call', 'tool_calls', 'function_call'].includes(k))) {
+    return true;
+  }
+
+  if (keys.includes('function')) {
+    const funcVal = obj.function;
+    if (funcVal && typeof funcVal === 'object') {
+      return true;
+    }
+    if (typeof funcVal === 'string' && (knownCaps.has(funcVal.toLowerCase()) || keys.some(k => ['arguments', 'parameters', 'args'].includes(k)))) {
+      return true;
+    }
+    if (keys.some(k => ['arguments', 'parameters', 'name'].includes(k))) {
+      return true;
+    }
+  }
+
+  if (keys.includes('name') && keys.some(k => ['parameters', 'arguments', 'params'].includes(k))) {
+    const nameVal = String(obj.name || '').toLowerCase();
+    if (knownCaps.has(nameVal)) {
+      return true;
+    }
+  }
+
+  if (['action', 'tool_call', 'function_call', 'capability_call'].includes(obj.type)) {
+    return true;
+  }
+
+  if (obj.capability && knownCaps.has(String(obj.capability).toLowerCase()) && keys.some(k => ['parameters', 'params', 'action'].includes(k))) {
+    return true;
+  }
+
+  return false;
+}
+
 export function parseSSELine(line: string): {
   type: 'token' | 'done' | 'error' | 'ignore' | 'event';
   content?: string;
@@ -44,12 +97,17 @@ export function parseSSELine(line: string): {
     return { type: 'error', content: dataContent.slice(6).trim() };
   }
 
-  // Check if payload is a structured JSON event
+  // Check if payload is a structured JSON event or internal action envelope
   if (dataContent.startsWith('{') && dataContent.endsWith('}')) {
     try {
       const parsed = JSON.parse(dataContent);
-      if (parsed && typeof parsed === 'object' && parsed.type) {
-        return { type: 'event', event: parsed };
+      if (parsed && typeof parsed === 'object') {
+        if (isInternalActionPayload(parsed)) {
+          return { type: 'ignore' };
+        }
+        if (parsed.type) {
+          return { type: 'event', event: parsed };
+        }
       }
     } catch {
       // Non-JSON falls through to plain token
@@ -61,6 +119,7 @@ export function parseSSELine(line: string): {
 
 export const CompanionService = {
   parseSSELine,
+  isInternalActionPayload,
   // ── Core Chat ──────────────────────────────────────
   async chat(
     userId: string,

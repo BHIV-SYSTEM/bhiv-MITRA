@@ -68,7 +68,7 @@ class UniGuruCapability(BaseCapability):
                         capability=self.name,
                         intent=intent,
                         status="success",
-                        summary=f"Knowledge response from UniGuru Live HTTP API ({resp.latency_ms:.1f}ms).",
+                        summary="Knowledge response from UniGuru Live HTTP API.",
                         data={
                             "answer": resp.data.get("answer", resp.data),
                             "query": message,

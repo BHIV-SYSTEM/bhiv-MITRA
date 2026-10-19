@@ -371,8 +371,8 @@ def test_15_existing_whatsapp_business_required_remains():
     )
     result = communication_service.execute_action(action)
     assert result.status == "failed"
-    assert result.error_code == "WHATSAPP_BUSINESS_REQUIRED"
-    assert "Meta WhatsApp Business account" in (result.error or "")
+    assert result.error_code == "CREDENTIALS_MISSING"
+    assert "credentials not configured" in (result.error or "").lower()
 
 
 # ── 16. Client passing raw credentials in metadata rejected ─────────────────

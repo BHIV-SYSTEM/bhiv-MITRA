@@ -2,9 +2,11 @@ import os
 import smtplib
 import socket
 import requests
+import email.utils
+import email.header
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime
 import logging
 import base64
@@ -100,7 +102,73 @@ def _get_ipv4_host(hostname: str) -> str:
     """Resolve and validate hostname with SSRF protection."""
     return validate_safe_mail_host(hostname)
 
+def parse_rfc_sender(raw_sender: Any) -> Tuple[str, str, str]:
+    """
+    Parses an RFC 2822 sender string into (display_name, email_address, formatted_display).
+    Handles MIME encoded words, quote stripping, bracket normalization, and bare addresses.
+    Falls back gracefully when sender information is absent or non-standard.
+    """
+    if not raw_sender or not isinstance(raw_sender, str):
+        return "", "", ""
+
+    s = raw_sender.strip()
+    if not s:
+        return "", "", ""
+
+    # Decode MIME encoded-words (=?UTF-8?B?...?= or =?UTF-8?Q?...?=) if present
+    try:
+        chunks = email.header.decode_header(s)
+        parts = []
+        for c, enc in chunks:
+            if isinstance(c, bytes):
+                parts.append(c.decode(enc or "utf-8", errors="replace"))
+            else:
+                parts.append(str(c))
+        s = "".join(parts).strip()
+    except Exception:
+        pass
+
+    try:
+        name, addr = email.utils.parseaddr(s)
+        name = name.strip("\"' ").strip()
+        addr = addr.strip("<> ").strip()
+        if "@" in addr:
+            if name:
+                return name, addr, f"{name} <{addr}>"
+            return "", addr, addr
+        clean = s.strip("<>\"' ").strip()
+        return clean, "", clean
+    except Exception:
+        clean = s.strip("<>\"' ").strip()
+        return clean, "", clean
+
 class EmailExecutor:
+    def _create_fallback_message_stub(
+        self, msg_id: str, thread_id: str = "", labels: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """Creates a canonical empty fallback message stub for failed or partial item fetches."""
+        now_iso = datetime.utcnow().isoformat()
+        return {
+            "id": msg_id,
+            "message_id": msg_id,
+            "thread_id": thread_id,
+            "sender": "",
+            "from": "",
+            "sender_name": "",
+            "sender_email": "",
+            "sender_display": "",
+            "recipient": "",
+            "to": "",
+            "subject": "",
+            "snippet": "",
+            "content": "",
+            "body": "",
+            "timestamp": now_iso,
+            "date": now_iso,
+            "has_attachments": False,
+            "labels": labels if labels is not None else [],
+        }
+
     def __init__(self):
         self.smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com").strip()
         self.smtp_port = int(os.getenv("SMTP_PORT", "587"))
@@ -281,8 +349,8 @@ class EmailExecutor:
         for h in headers:
             header_map[h.get("name", "").lower()] = h.get("value", "")
 
-        sender = header_map.get("from", "")
-        recipient = header_map.get("to", "")
+        sender = header_map.get("from") or header_map.get("sender") or ""
+        recipient = header_map.get("to") or header_map.get("delivered-to") or ""
         subject = header_map.get("subject", "")
         raw_date = header_map.get("date", "")
 
@@ -349,15 +417,25 @@ class EmailExecutor:
         else:
             content = snippet
 
+        sender_name, sender_email, sender_display = parse_rfc_sender(sender)
+
         norm = {
             "id": msg_id,
+            "message_id": msg_id,
             "thread_id": thread_id,
             "sender": sender,
+            "from": sender,
+            "sender_name": sender_name,
+            "sender_email": sender_email,
+            "sender_display": sender_display or sender,
             "recipient": recipient,
+            "to": recipient,
             "subject": subject,
             "snippet": snippet,
             "content": content,
+            "body": content,
             "timestamp": timestamp,
+            "date": timestamp,
             "has_attachments": has_attachments,
             "labels": labels,
         }
@@ -663,31 +741,9 @@ class EmailExecutor:
                     if msg_res.status_code == 200:
                         normalized_list.append(self._normalize_gmail_message(msg_res.json()))
                     else:
-                        normalized_list.append({
-                            "id": msg_id,
-                            "thread_id": item.get("threadId", ""),
-                            "sender": "",
-                            "recipient": "",
-                            "subject": "",
-                            "snippet": "",
-                            "content": "",
-                            "timestamp": datetime.utcnow().isoformat(),
-                            "has_attachments": False,
-                            "labels": ["INBOX"]
-                        })
+                        normalized_list.append(self._create_fallback_message_stub(msg_id, item.get("threadId", ""), labels=["INBOX"]))
                 except Exception:
-                    normalized_list.append({
-                        "id": msg_id,
-                        "thread_id": item.get("threadId", ""),
-                        "sender": "",
-                        "recipient": "",
-                        "subject": "",
-                        "snippet": "",
-                        "content": "",
-                        "timestamp": datetime.utcnow().isoformat(),
-                        "has_attachments": False,
-                        "labels": ["INBOX"]
-                    })
+                    normalized_list.append(self._create_fallback_message_stub(msg_id, item.get("threadId", ""), labels=["INBOX"]))
 
             return {
                 "status": "success",
@@ -797,31 +853,9 @@ class EmailExecutor:
                     if msg_res.status_code == 200:
                         normalized_list.append(self._normalize_gmail_message(msg_res.json()))
                     else:
-                        normalized_list.append({
-                            "id": msg_id,
-                            "thread_id": item.get("threadId", ""),
-                            "sender": "",
-                            "recipient": "",
-                            "subject": "",
-                            "snippet": "",
-                            "content": "",
-                            "timestamp": datetime.utcnow().isoformat(),
-                            "has_attachments": False,
-                            "labels": []
-                        })
+                        normalized_list.append(self._create_fallback_message_stub(msg_id, item.get("threadId", ""), labels=[]))
                 except Exception:
-                    normalized_list.append({
-                        "id": msg_id,
-                        "thread_id": item.get("threadId", ""),
-                        "sender": "",
-                        "recipient": "",
-                        "subject": "",
-                        "snippet": "",
-                        "content": "",
-                        "timestamp": datetime.utcnow().isoformat(),
-                        "has_attachments": False,
-                        "labels": []
-                    })
+                    normalized_list.append(self._create_fallback_message_stub(msg_id, item.get("threadId", ""), labels=[]))
 
             return {
                 "status": "success",

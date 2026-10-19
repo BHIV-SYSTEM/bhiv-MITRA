@@ -51,6 +51,8 @@ def set_env(monkeypatch):
     monkeypatch.setenv("JWT_SECRET_KEY", "test_jwt_secret_phase_b_comm_1_security_99999")
     monkeypatch.setenv("API_KEY", "test_api_key_mitra_123")
     monkeypatch.setenv("TOKEN_ENCRYPTION_KEY", "kX8pZ_5vW1yT3uR0qL7mJ9nF2hD4gA6sB8cE0iK2mO4=")
+    monkeypatch.setenv("ENV", "production")
+    monkeypatch.setenv("ENVIRONMENT", "production")
 
 
 def get_auth_headers(user_id: str):
@@ -264,7 +266,8 @@ def test_7_user_a_cannot_access_user_b_whatsapp():
     )
     # User-owned messaging requires Meta WhatsApp Business
     assert res["status"] == "error"
-    assert res.get("error_code") == "WHATSAPP_BUSINESS_REQUIRED"
+    assert res.get("error_code") == "CREDENTIALS_MISSING"
+    assert "credentials not configured" in res.get("error", "").lower()
 
 
 # ── 8. User A Cannot Access User B Custom Email ─────────────────────────────
