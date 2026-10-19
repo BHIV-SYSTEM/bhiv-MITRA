@@ -23,9 +23,6 @@ export class Header {
         <button class="mitra-btn" id="btn-minimize" title="Minimize Chatbot">
           <svg viewBox="0 0 24 24"><path d="M19 13H5v-2h14v2z"/></svg>
         </button>
-        <button class="mitra-btn close-btn" id="btn-close" title="Close Chatbot">
-          <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
-        </button>
       </div>
     `;
 
@@ -47,7 +44,7 @@ export class Header {
       });
     }
 
-    const handleCloseOrMinimize = (e) => {
+    const handleMinimize = (e) => {
       if (e) {
         e.preventDefault();
         e.stopPropagation();
@@ -61,16 +58,9 @@ export class Header {
 
     const minBtn = this.element.querySelector('#btn-minimize');
     if (minBtn) {
-      minBtn.addEventListener('click', handleCloseOrMinimize);
+      minBtn.addEventListener('click', handleMinimize);
       minBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
       minBtn.addEventListener('mousedown', (e) => e.stopPropagation());
-    }
-
-    const closeBtn = this.element.querySelector('#btn-close');
-    if (closeBtn) {
-      closeBtn.addEventListener('click', handleCloseOrMinimize);
-      closeBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
-      closeBtn.addEventListener('mousedown', (e) => e.stopPropagation());
     }
 
     const dockBtn = this.element.querySelector('#btn-dock');
