@@ -4,6 +4,8 @@ Routes email intents through ExecutionService.
 """
 from __future__ import annotations
 import re
+import email.utils
+import email.header
 from typing import Any, Dict, List, Optional
 from app.capabilities.base_capability import BaseCapability, CapabilityResult
 import logging
@@ -24,6 +26,82 @@ class EmailCapability(BaseCapability):
             "email", "draft_email", "send_email", "read_emails", "search_emails",
             "SEND_MESSAGE", "DRAFT_MESSAGE", "READ_MESSAGES", "SEARCH_MESSAGES",
         ]
+
+    @staticmethod
+    def _parse_rfc_sender_display(raw: Any) -> str:
+        """Parses raw RFC 2822 sender strings into clean, human-readable display representation."""
+        if not raw or not isinstance(raw, str):
+            return "Unknown"
+        s = raw.strip()
+        if not s:
+            return "Unknown"
+
+        # Decode MIME encoded-words (=?UTF-8?B?...?= or =?UTF-8?Q?...?=) if present
+        try:
+            chunks = email.header.decode_header(s)
+            parts = []
+            for c, enc in chunks:
+                if isinstance(c, bytes):
+                    parts.append(c.decode(enc or "utf-8", errors="replace"))
+                else:
+                    parts.append(str(c))
+            s = "".join(parts).strip()
+        except Exception:
+            pass
+
+        try:
+            name, addr = email.utils.parseaddr(s)
+            name = name.strip("\"' ").strip()
+            addr = addr.strip("<> ").strip()
+            if "@" in addr:
+                if name:
+                    return f"{name} <{addr}>"
+                return addr
+            clean = s.strip("<>\"' ").strip()
+            return clean if clean else "Unknown"
+        except Exception:
+            clean = s.strip("<>\"' ").strip()
+            return clean if clean else "Unknown"
+
+    @staticmethod
+    def _extract_sender_display(m: Dict[str, Any]) -> str:
+        """
+        Extracts sender identity from message dictionary with backward compatibility.
+        Checks canonical 'sender', legacy 'from', and structured fields.
+        Falls back safely to 'Unknown' when sender information is absent.
+        """
+        if not isinstance(m, dict):
+            return "Unknown"
+
+        raw_sender = m.get("sender_display") or m.get("sender") or m.get("from") or ""
+        if isinstance(raw_sender, str) and raw_sender.strip():
+            return EmailCapability._parse_rfc_sender_display(raw_sender)
+
+        name = str(m.get("sender_name") or "").strip()
+        email_addr = str(m.get("sender_email") or "").strip()
+        if name and email_addr:
+            return f"{name} <{email_addr}>"
+        elif email_addr:
+            return email_addr
+        elif name:
+            return name
+
+        return "Unknown"
+
+    @staticmethod
+    def _extract_date_display(m: Dict[str, Any]) -> str:
+        """
+        Extracts date/timestamp from message dictionary with backward compatibility.
+        Checks canonical 'timestamp', legacy 'date', and fallback fields.
+        """
+        if not isinstance(m, dict):
+            return ""
+
+        raw_date = m.get("timestamp") or m.get("date") or m.get("internal_date") or ""
+        if not raw_date:
+            return ""
+
+        return str(raw_date).strip()
 
     async def execute(self, intent: str, params: Dict[str, Any], trace_id: Optional[str] = None) -> CapabilityResult:
         try:
@@ -144,10 +222,10 @@ class EmailCapability(BaseCapability):
                     if msgs:
                         lines = [f"Here are your latest {len(msgs)} emails:\n"]
                         for idx, m in enumerate(msgs[:10], 1):
-                            snd = m.get("from") or "Unknown"
-                            sbj = m.get("subject") or "(No Subject)"
-                            dt = m.get("date") or ""
-                            snp = m.get("snippet") or ""
+                            snd = self._extract_sender_display(m)
+                            sbj = (m.get("subject") or "").strip() or "(No Subject)"
+                            dt = self._extract_date_display(m)
+                            snp = (m.get("snippet") or "").strip()
                             lines.append(f"{idx}. **From:** {snd}\n   **Subject:** {sbj}\n   **Date:** {dt}\n   **Snippet:** {snp}")
                         summary_text = "\n\n".join(lines)
                     else:
@@ -158,10 +236,10 @@ class EmailCapability(BaseCapability):
                     if msgs:
                         lines = [f"Found {len(msgs)} emails matching '{q_disp}':\n"]
                         for idx, m in enumerate(msgs[:10], 1):
-                            snd = m.get("from") or "Unknown"
-                            sbj = m.get("subject") or "(No Subject)"
-                            dt = m.get("date") or ""
-                            snp = m.get("snippet") or ""
+                            snd = self._extract_sender_display(m)
+                            sbj = (m.get("subject") or "").strip() or "(No Subject)"
+                            dt = self._extract_date_display(m)
+                            snp = (m.get("snippet") or "").strip()
                             lines.append(f"{idx}. **From:** {snd}\n   **Subject:** {sbj}\n   **Date:** {dt}\n   **Snippet:** {snp}")
                         summary_text = "\n\n".join(lines)
                     else:
