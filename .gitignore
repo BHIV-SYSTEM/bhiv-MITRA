@@ -2,15 +2,22 @@
 backend/.env
 frontend/.env
 frontend/frontend/.env
+.env
 
 # Python
+.venv/
+.venv*/
+backend/.venv/
 backend/venv/
 backend/venv310/
 backend/__pycache__/
 backend/.pytest_cache/
 backend/logs/
+*.pyc
+__pycache__/
 
 # Node / frontend
+node_modules/
 frontend/frontend/node_modules/
 frontend/frontend/build/
 frontend/frontend/dist/
@@ -24,5 +31,6 @@ Thumbs.db
 # Local Mission Vana Audits & Cloud Guides
 MISSION_VANA_REUSABLE_ASSETS_AUDIT.md
 MITRA_CLOUD_VM_DEPLOYMENT_GUIDE.md
+
 
 

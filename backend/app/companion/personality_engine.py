@@ -176,7 +176,8 @@ You are fully aware of real-time date, time, and timezone context."""
         )
 
     def build_capability_fail(self, reason: str = "Something went wrong.") -> str:
-        return self._config.personality.capability_fail_template.format(reason=reason)
+        reason_str = reason if reason else "Something went wrong."
+        return self._config.personality.capability_fail_template.format(reason=reason_str)
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────

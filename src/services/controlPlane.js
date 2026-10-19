@@ -84,7 +84,7 @@ export class ControlPlane {
       const preText = text.trim();
 
       // ── TRANSLATE (MyMemory free API — catches "translate X into Y" AND "'X' into Y") ──
-      const langMap = {hindi:'hi',french:'fr',spanish:'es',german:'de',arabic:'ar',portuguese:'pt',russian:'ru',japanese:'ja',chinese:'zh',korean:'ko',italian:'it',dutch:'nl',turkish:'tr',polish:'pl',marathi:'mr',gujarati:'gu',bengali:'bn',tamil:'ta',telugu:'te',kannada:'kn',punjabi:'pa',urdu:'ur',english:'en'};
+      const langMap = { hindi: 'hi', french: 'fr', spanish: 'es', german: 'de', arabic: 'ar', portuguese: 'pt', russian: 'ru', japanese: 'ja', chinese: 'zh', korean: 'ko', italian: 'it', dutch: 'nl', turkish: 'tr', polish: 'pl', marathi: 'mr', gujarati: 'gu', bengali: 'bn', tamil: 'ta', telugu: 'te', kannada: 'kn', punjabi: 'pa', urdu: 'ur', english: 'en' };
       const allLangs = Object.keys(langMap).join('|');
       // Pattern 1: "Translate 'X' into Y"  or  "Translate X to Y"
       const tFull = preText.match(new RegExp(`translate\\s+([\\s\\S]+?)\\s+(?:into|to|in)\\s+(${allLangs})\\s*$`, 'i'));
@@ -110,7 +110,7 @@ export class ControlPlane {
             });
             return { status: 'ok' };
           }
-        } catch(e) { /* fall through to backend if API fails */ }
+        } catch (e) { /* fall through to backend if API fails */ }
       }
 
 
@@ -119,7 +119,7 @@ export class ControlPlane {
         const msgMatch = preText.match(/remind(?:er)?\s+(?:me\s+)?(?:to\s+)?(.+?)(?:\s+in\s+|\s+at\s+|\s+for\s+|$)/i);
         const timeMatch = preText.match(/in\s+(\d+)\s+(min|minute|hour|hr|second|sec)/i)
           || preText.match(/(\d+)\s+(min|minute|hour|hr|second|sec)/i);
-        const remTitle = msgMatch?.[1]?.trim() || preText.replace(/\b(remind|reminder|alert me|notify me|me|to)\b/gi,'').trim() || 'Reminder';
+        const remTitle = msgMatch?.[1]?.trim() || preText.replace(/\b(remind|reminder|alert me|notify me|me|to)\b/gi, '').trim() || 'Reminder';
         let delayMs = 3600000; // default 1 hour
         if (timeMatch) {
           const num = parseInt(timeMatch[1]);
@@ -142,7 +142,7 @@ export class ControlPlane {
             }
             eventBus.emit('notification.received', { title: '⏰ Reminder Fired!', text: `⏰ ${remTitle}`, intent: 'reminder_alert' });
           }, delayMs);
-        } catch(e) {}
+        } catch (e) { }
         const timeStr = new Date(fireAt).toLocaleTimeString();
         eventBus.emit('health.changed', { status: 'Healthy' });
         contextStore.addMessage('mitra', `Reminder set: "${remTitle}"`, { intent: 'reminder' });
@@ -199,57 +199,57 @@ export class ControlPlane {
 
         // Map 40+ global language names and synonyms to ISO codes
         const langMap = {
-          hindi:'hi', hind:'hi', hindustani:'hi',
-          french:'fr', francais:'fr',
-          spanish:'es', espanol:'es',
-          german:'de', deutsch:'de',
-          arabic:'ar',
-          portuguese:'pt',
-          russian:'ru',
-          japanese:'ja', nihongo:'ja',
-          chinese:'zh', mandarin:'zh',
-          korean:'ko',
-          italian:'it',
-          dutch:'nl',
-          turkish:'tr',
-          polish:'pl',
-          marathi:'mr',
-          gujarati:'gu',
-          bengali:'bn', bangla:'bn',
-          tamil:'ta',
-          telugu:'te',
-          kannada:'kn',
-          punjabi:'pa',
-          urdu:'ur',
-          vietnamese:'vi',
-          thai:'th',
-          greek:'el',
-          hebrew:'he',
-          swedish:'sv',
-          danish:'da',
-          finnish:'fi',
-          norwegian:'no',
-          czech:'cs',
-          hungarian:'hu',
-          romanian:'ro',
-          ukrainian:'uk',
-          indonesian:'id',
-          malay:'ms',
-          persian:'fa', farsi:'fa',
-          english:'en'
+          hindi: 'hi', hind: 'hi', hindustani: 'hi',
+          french: 'fr', francais: 'fr',
+          spanish: 'es', espanol: 'es',
+          german: 'de', deutsch: 'de',
+          arabic: 'ar',
+          portuguese: 'pt',
+          russian: 'ru',
+          japanese: 'ja', nihongo: 'ja',
+          chinese: 'zh', mandarin: 'zh',
+          korean: 'ko',
+          italian: 'it',
+          dutch: 'nl',
+          turkish: 'tr',
+          polish: 'pl',
+          marathi: 'mr',
+          gujarati: 'gu',
+          bengali: 'bn', bangla: 'bn',
+          tamil: 'ta',
+          telugu: 'te',
+          kannada: 'kn',
+          punjabi: 'pa',
+          urdu: 'ur',
+          vietnamese: 'vi',
+          thai: 'th',
+          greek: 'el',
+          hebrew: 'he',
+          swedish: 'sv',
+          danish: 'da',
+          finnish: 'fi',
+          norwegian: 'no',
+          czech: 'cs',
+          hungarian: 'hu',
+          romanian: 'ro',
+          ukrainian: 'uk',
+          indonesian: 'id',
+          malay: 'ms',
+          persian: 'fa', farsi: 'fa',
+          english: 'en'
         };
 
         const targetCode = langMap[rawTarget] || rawTarget.slice(0, 2);
 
         const displayNames = {
-          'hi':'Hindi', 'fr':'French', 'es':'Spanish', 'de':'German', 'ar':'Arabic',
-          'pt':'Portuguese', 'ru':'Russian', 'ja':'Japanese', 'zh':'Chinese', 'ko':'Korean',
-          'it':'Italian', 'nl':'Dutch', 'tr':'Turkish', 'pl':'Polish', 'mr':'Marathi',
-          'gu':'Gujarati', 'bn':'Bengali', 'ta':'Tamil', 'te':'Telugu', 'kn':'Kannada',
-          'pa':'Punjabi', 'ur':'Urdu', 'vi':'Vietnamese', 'th':'Thai', 'el':'Greek',
-          'he':'Hebrew', 'sv':'Swedish', 'da':'Danish', 'fi':'Finnish', 'no':'Norwegian',
-          'cs':'Czech', 'hu':'Hungarian', 'ro':'Romanian', 'uk':'Ukrainian', 'id':'Indonesian',
-          'ms':'Malay', 'fa':'Persian', 'en':'English'
+          'hi': 'Hindi', 'fr': 'French', 'es': 'Spanish', 'de': 'German', 'ar': 'Arabic',
+          'pt': 'Portuguese', 'ru': 'Russian', 'ja': 'Japanese', 'zh': 'Chinese', 'ko': 'Korean',
+          'it': 'Italian', 'nl': 'Dutch', 'tr': 'Turkish', 'pl': 'Polish', 'mr': 'Marathi',
+          'gu': 'Gujarati', 'bn': 'Bengali', 'ta': 'Tamil', 'te': 'Telugu', 'kn': 'Kannada',
+          'pa': 'Punjabi', 'ur': 'Urdu', 'vi': 'Vietnamese', 'th': 'Thai', 'el': 'Greek',
+          'he': 'Hebrew', 'sv': 'Swedish', 'da': 'Danish', 'fi': 'Finnish', 'no': 'Norwegian',
+          'cs': 'Czech', 'hu': 'Hungarian', 'ro': 'Romanian', 'uk': 'Ukrainian', 'id': 'Indonesian',
+          'ms': 'Malay', 'fa': 'Persian', 'en': 'English'
         };
         const displayLang = displayNames[targetCode] || (rawTarget.charAt(0).toUpperCase() + rawTarget.slice(1));
 
@@ -395,7 +395,7 @@ export class ControlPlane {
       // ═══════════════════════════════════════════════════════════════════
 
       // Explicit news query detection (urls, news keywords, or backend samachar capability)
-      const isNewsQuery = isDirectUrl 
+      const isNewsQuery = isDirectUrl
         || /\b(news|headline|headlines|samachar|khabar|breaking news)\b/i.test(trimmedText)
         || (capabilityResult && capabilityResult.capability === 'samachar')
         || (intent === 'news' && !capabilityResult);
@@ -405,14 +405,14 @@ export class ControlPlane {
         intent = 'news';
         if (!capabilityResult && replyText) {
           const cleanSummary = replyText.replace(/^Web Information Intelligence Summary:\s*/i, '').trim();
-          
+
           // Dynamic Metadata Extractor for Title, Author, and Date
           let extractedTitle = null;
           let extractedAuthor = null;
           let extractedDate = null;
 
-          const headingMatch = cleanSummary.match(/#+\s*([^\n#]+)/) 
-            || cleanSummary.match(/-\s*([^:\n]+):/) 
+          const headingMatch = cleanSummary.match(/#+\s*([^\n#]+)/)
+            || cleanSummary.match(/-\s*([^:\n]+):/)
             || cleanSummary.match(/Title:\s*([^\n]+)/i);
           if (headingMatch && headingMatch[1]) {
             const cand = headingMatch[1].trim();
@@ -429,7 +429,7 @@ export class ControlPlane {
               if (slug.length > 3 && slug.includes('-')) {
                 extractedTitle = slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
               }
-            } catch (e) {}
+            } catch (e) { }
           }
 
           // For plain queries, derive title from the query itself
@@ -452,7 +452,7 @@ export class ControlPlane {
               const parsed = new URL(trimmedText);
               const domain = parsed.hostname.replace(/^www\./i, '').split('.')[0];
               extractedAuthor = domain.toUpperCase() + ' News Desk';
-            } catch (e) {}
+            } catch (e) { }
           } else {
             extractedAuthor = 'MITRA News Intelligence';
           }
@@ -686,7 +686,7 @@ export class ControlPlane {
             }
             eventBus.emit('notification.received', { title: '⏰ Reminder Fired!', text: `⏰ ${messageText}`, intent: 'reminder_alert' });
           }, delayMs);
-        } catch(e) {}
+        } catch (e) { }
         const timeStr = new Date(fireAt).toLocaleString();
         eventBus.emit('health.changed', { status: 'Healthy' });
         return {
@@ -1337,6 +1337,93 @@ export class ControlPlane {
       body: JSON.stringify({})
     });
     return await response.json();
+  }
+
+  // ─── WHATSAPP INTEGRATIONS (PERSONAL & BUSINESS) ──────────────────────────
+
+  /**
+   * Validate recipient phone and generate official wa.me Click to Chat URL.
+   */
+  async preparePersonalWhatsApp(phone, message, countryCode = '91') {
+    const res = await fetch(`${getApiBaseUrl()}/api/whatsapp/personal/prepare`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({ phone, message, country_code: countryCode })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to prepare personal WhatsApp link.');
+    }
+    return await res.json();
+  }
+
+  /**
+   * Generate an AI-assisted WhatsApp draft from natural language instruction.
+   */
+  async generateAIDraft(instruction, recipientName = '', tone = 'friendly') {
+    const res = await fetch(`${getApiBaseUrl()}/api/whatsapp/personal/draft`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({ instruction, recipient_name: recipientName, tone })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to generate AI draft.');
+    }
+    return await res.json();
+  }
+
+  /**
+   * Get Meta WhatsApp Business connection status.
+   */
+  async getBusinessWhatsAppStatus() {
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/api/whatsapp/business/status`, {
+        method: 'GET',
+        headers: buildHeaders()
+      });
+      if (res.ok) return await res.json();
+    } catch (e) {
+      console.warn('[ControlPlane] Failed to fetch WhatsApp business status:', e);
+    }
+    return { status: 'disconnected', mode: 'business' };
+  }
+
+  /**
+   * Connect Meta WhatsApp Business credentials.
+   */
+  async connectBusinessWhatsApp(phoneNumberId, wabaId, accessToken, phoneDisplayNumber = '') {
+    const res = await fetch(`${getApiBaseUrl()}/api/whatsapp/business/connect`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({
+        phone_number_id: phoneNumberId,
+        waba_id: wabaId,
+        access_token: accessToken,
+        phone_display_number: phoneDisplayNumber
+      })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to connect Meta WhatsApp Business account.');
+    }
+    return await res.json();
+  }
+
+  /**
+   * Disconnect Meta WhatsApp Business credentials.
+   */
+  async disconnectBusinessWhatsApp() {
+    const res = await fetch(`${getApiBaseUrl()}/api/whatsapp/business/disconnect`, {
+      method: 'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({})
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to disconnect WhatsApp Business account.');
+    }
+    return await res.json();
   }
 }
 

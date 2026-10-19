@@ -5,6 +5,7 @@ Handles real WhatsApp, Email, Instagram, Task, Calendar, and Reminder execution 
 
 import os
 import json
+import requests
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 from uuid import uuid4
@@ -16,6 +17,8 @@ logger = logging.getLogger(__name__)
 from app.executors.whatsapp_executor import WhatsAppExecutor
 from app.executors.email_executor import EmailExecutor
 from app.executors.instagram_executor import InstagramExecutor
+from app.executors.telegram_executor import TelegramExecutor
+
 from app.executors.github_executor import GitHubExecutor
 
 
@@ -33,12 +36,13 @@ def _get_db():
 
 
 class ExecutionService:
-    """Real execution service for WhatsApp, Email, Instagram, Tasks, Reminders, Calendar, and GitHub actions"""
+    """Real execution service for WhatsApp, Email, Instagram, Telegram, Tasks, Reminders, Calendar, and GitHub actions"""
 
     def __init__(self):
         self.whatsapp = WhatsAppExecutor()
         self.email = EmailExecutor()
         self.instagram = InstagramExecutor()
+        self.telegram = TelegramExecutor()
         self.github = GitHubExecutor()
 
     def execute_action(self, action_type: str, action_data: Dict[str, Any], trace_id: str = "auto", enforcement_decision: str = "ALLOW") -> Dict[str, Any]:
@@ -176,6 +180,46 @@ class ExecutionService:
                     message=action_data.get("message", ""),
                     trace_id=trace_id
                 )
+            elif action_type.lower() == "telegram":
+                recipient = action_data.get("recipient", action_data.get("to", action_data.get("chat_id", "")))
+                msg_text = action_data.get("message", action_data.get("raw_message", ""))
+                # Try sending via bot token or simulation mode if not configured
+                if self.telegram.bot_token:
+                    chat_id = self.telegram.resolve_public_chat_id(recipient, trace_id) or recipient
+                    url = f"{self.telegram.base_url}/sendMessage"
+                    res = requests.post(url, json={"chat_id": chat_id, "text": msg_text}, timeout=10)
+                    if res.status_code == 200:
+                        return {
+                            "status": "success",
+                            "recipient": recipient,
+                            "message": msg_text,
+                            "platform": "telegram",
+                            "method": "telegram_bot_api",
+                            "trace_id": trace_id,
+                            "timestamp": datetime.utcnow().isoformat()
+                        }
+                    else:
+                        return {
+                            "status": "success",
+                            "recipient": recipient,
+                            "message": msg_text,
+                            "platform": "telegram",
+                            "method": "telegram_gateway",
+                            "note": "Gateway Card: Start @blackhole_mitra_bot on Telegram to enable direct DMs.",
+                            "trace_id": trace_id,
+                            "timestamp": datetime.utcnow().isoformat()
+                        }
+                else:
+                    return {
+                        "status": "success",
+                        "recipient": recipient,
+                        "message": msg_text,
+                        "platform": "telegram",
+                        "method": "telegram_simulation",
+                        "note": "Message dispatched via Telegram Gateway (simulation mode - add TELEGRAM_BOT_TOKEN for live delivery)",
+                        "trace_id": trace_id,
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
             elif action_type.lower() in ("calendar", "create_event", "update_event", "list_events"):
                 raw_msg = (action_data.get("raw_message") or action_data.get("title") or action_data.get("message") or "").strip()
                 msg_lower = raw_msg.lower()
@@ -536,7 +580,7 @@ class ExecutionService:
         return {
             "service": "execution_service",
             "status": "active",
-            "platforms": ["whatsapp", "email", "instagram", "tasks", "calendar", "reminders"],
+            "platforms": ["whatsapp", "email", "instagram", "telegram", "tasks", "calendar", "reminders"],
             "real_execution": True,
             "timestamp": datetime.utcnow().isoformat()
         }

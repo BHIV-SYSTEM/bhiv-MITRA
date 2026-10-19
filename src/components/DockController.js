@@ -52,29 +52,10 @@ export class DockController {
     } else {
       this.shell.classList.add('floating');
       clearPositionStyles();
-      const lastPos = contextStore.getPosition();
-      if (lastPos && lastPos.left != null && lastPos.top != null) {
-        const parsedLeft = parseFloat(lastPos.left);
-        const parsedTop = parseFloat(lastPos.top);
-        if (!isNaN(parsedLeft) && !isNaN(parsedTop)) {
-          const safeLeft = Math.min(Math.max(0, parsedLeft), Math.max(0, window.innerWidth - 80));
-          const safeTop = Math.min(Math.max(0, parsedTop), Math.max(0, window.innerHeight - 80));
-          this.shell.style.left = `${safeLeft}px`;
-          this.shell.style.top = `${safeTop}px`;
-          this.shell.style.bottom = 'auto';
-          this.shell.style.right = 'auto';
-        } else {
-          this.shell.style.bottom = '24px';
-          this.shell.style.right = '24px';
-          this.shell.style.top = 'auto';
-          this.shell.style.left = 'auto';
-        }
-      } else {
-        this.shell.style.bottom = '24px';
-        this.shell.style.right = '24px';
-        this.shell.style.top = 'auto';
-        this.shell.style.left = 'auto';
-      }
+      this.shell.style.bottom = '24px';
+      this.shell.style.right = '24px';
+      this.shell.style.top = 'auto';
+      this.shell.style.left = 'auto';
       this.shell.style.position = 'fixed';
     }
 

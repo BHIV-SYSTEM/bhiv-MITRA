@@ -90,7 +90,10 @@ async def get_calendar_events(user_id: str = "user_default"):
 
 @router.post("/calendar/events")
 async def create_calendar_event(event: CalendarEventCreate, user_id: str = "user_default"):
-    """Create a calendar event and synchronize with Google/Microsoft if connected."""
+    """Create a calendar event and persist to database with smart datetime & sync URLs."""
+    from app.capabilities.calendar_capability import _parse_event_datetime_and_title
+    clean_title, start_dt, end_dt = _parse_event_datetime_and_title(event.title)
+
     event_id = f"ev_{uuid4().hex[:8]}"
     now = datetime.now(timezone.utc)
 
@@ -172,12 +175,12 @@ async def create_calendar_event(event: CalendarEventCreate, user_id: str = "user
     doc = {
         "_id": event_id,
         "user_id": user_id,
-        "title": event.title,
-        "start": event.start,
-        "end": end_time,
+        "title": clean_title,
+        "start": start_iso_str,
+        "end": end_iso_str,
         "timezone": user_tz,
         "color": event.color,
-        "description": event.description,
+        "description": event.description or "Scheduled via MITRA Universal Companion Engine",
         "location": event.location,
         "provider": provider,
         "external_event_id": provider_event_id,
@@ -191,9 +194,27 @@ async def create_calendar_event(event: CalendarEventCreate, user_id: str = "user
     if db is not None:
         try:
             db["calendar_events"].insert_one(doc)
-            logger.info(f"Calendar event created: {event_id} — {event.title} [{sync_status}]")
+
         except Exception as e:
             logger.warning(f"Calendar DB insert failed: {e}")
+
+    import urllib.parse
+    start_iso = start_dt.strftime("%Y%m%dT%H%M%SZ")
+    end_iso = end_dt.strftime("%Y%m%dT%H%M%SZ")
+    encoded_title = urllib.parse.quote(clean_title)
+    encoded_details = urllib.parse.quote("Scheduled via MITRA Universal Companion Engine")
+
+    google_url = f"https://calendar.google.com/calendar/render?action=TEMPLATE&text={encoded_title}&dates={start_iso}/{end_iso}&details={encoded_details}"
+    apple_url = f"webcal://localhost:8000/api/calendar/feed.ics?user_id={urllib.parse.quote(user_id)}"
+    outlook_url = f"https://outlook.live.com/calendar/0/deeplink/compose?path=/calendar/action/compose&rru=addevent&subject={encoded_title}&startdt={start_dt.isoformat()}&enddt={end_dt.isoformat()}&body={encoded_details}"
+    zoho_url = f"https://calendar.zoho.com/calendar/export/event?title={encoded_title}&start={start_iso}&end={end_iso}&description={encoded_details}"
+
+    sync_urls = {
+        "google": google_url,
+        "apple": apple_url,
+        "microsoft": outlook_url,
+        "zoho": zoho_url,
+    }
 
     return {
         "success": True,
@@ -202,19 +223,17 @@ async def create_calendar_event(event: CalendarEventCreate, user_id: str = "user
         "provider": provider,
         "event": {
             "id": event_id,
-            "title": event.title,
-            "start": event.start,
-            "end": end_time,
-            "timezone": user_tz,
+            "title": getattr(event, 'title', clean_title),
+            "start": getattr(event, 'start', start_iso_str),
+            "end": end_iso_str,
             "color": event.color,
             "description": event.description,
             "location": event.location,
             "provider": provider,
-            "external_event_id": provider_event_id,
-            "external_event_link": html_link,
             "provider_event_id": provider_event_id,
             "sync_status": sync_status
         },
+        "sync_urls": sync_urls
     }
 
 

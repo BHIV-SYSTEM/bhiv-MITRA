@@ -75,11 +75,23 @@ export class NotificationDrawer {
     this.isOpen = true;
     this.element.style.display = 'flex';
     this.fetchNotifications();
+    if (this.eventBus) {
+      try { this.eventBus.emit('drawer.opened', { name: 'notifications', width: 380 }); } catch (e) {}
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('mitra:drawer-state-changed', { detail: { open: true, width: 380 } }));
+    }
   }
 
   close() {
     this.isOpen = false;
     this.element.style.display = 'none';
+    if (this.eventBus) {
+      try { this.eventBus.emit('drawer.closed', { name: 'notifications' }); } catch (e) {}
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('mitra:drawer-state-changed', { detail: { open: false } }));
+    }
   }
 
   toggle() {

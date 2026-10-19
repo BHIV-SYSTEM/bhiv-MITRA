@@ -11,16 +11,16 @@
   "result": {
     "status": "success",
     "action_type": "calendar",
-    "summary": "Calendar event created: 'Team Meeting' for 2026-09-03 (No time set).",
+    "summary": "Calendar event created: 'Team Meeting' for 2026-08-21 (No time set).",
     "event": {
-      "id": "ev_4b24ba9a",
+      "id": "ev_83b28872",
       "title": "Team Meeting",
-      "start": "2026-09-03",
-      "end": "2026-09-03",
+      "start": "2026-08-21",
+      "end": "2026-08-21",
       "has_time": false
     },
     "trace_id": "test_trace_002",
-    "timestamp": "2026-09-03T11:02:00.527879",
+    "timestamp": "2026-08-21T06:33:29.890033",
     "service": "execution_service"
   }
 }

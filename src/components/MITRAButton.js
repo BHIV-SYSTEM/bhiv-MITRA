@@ -91,11 +91,19 @@ export class MITRAButton {
     }
   }
 
+  setHiddenPermanently(hidden) {
+    this.hiddenPermanently = Boolean(hidden);
+    if (this.hiddenPermanently) {
+      this.hide();
+    }
+  }
+
   hide() {
     this.element.style.display = 'none';
   }
 
   show() {
+    if (this.hiddenPermanently) return;
     this.element.style.display = 'flex';
   }
 }

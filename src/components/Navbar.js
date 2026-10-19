@@ -226,6 +226,16 @@ class MitraNavbar extends HTMLElement {
           </ul>
         </div>
         <div class="right">
+          <button id="topbar-mitra-toggle" title="Toggle MITRA Companion" aria-label="Toggle MITRA Companion" style="
+            display: inline-flex; align-items: center; gap: 6px;
+            background: rgba(108, 92, 231, 0.25); border: 1px solid rgba(108, 92, 231, 0.5);
+            color: #fff; cursor: pointer; padding: 6px 12px; border-radius: 8px;
+            font-size: 13px; font-weight: 600; font-family: inherit;
+            transition: background 0.2s, border-color 0.2s;
+          ">
+            <span style="font-size: 14px; color: #a29bfe;">✦</span>
+            <span>MITRA</span>
+          </button>
           <button id="topbar-notifications" title="Notifications" aria-label="Notifications" style="
             background: none; border: none; color: rgba(255,255,255,0.7); cursor: pointer;
             padding: 8px; border-radius: 8px; position: relative; display: flex; align-items: center; justify-content: center;
@@ -256,6 +266,18 @@ class MitraNavbar extends HTMLElement {
         </div>
       </nav>
     `;
+
+    // Wire MITRA Companion Toggle
+    const mitraBtn = this.shadowRoot.getElementById('topbar-mitra-toggle');
+    if (mitraBtn) {
+      mitraBtn.addEventListener('click', () => {
+        if (typeof window.__MITRA_TOGGLE_ORB__ === 'function') {
+          window.__MITRA_TOGGLE_ORB__();
+        } else {
+          window.dispatchEvent(new CustomEvent('mitra:toggle-orb'));
+        }
+      });
+    }
 
     // Wire Notification Drawer Toggle
     const notifBtn = this.shadowRoot.getElementById('topbar-notifications');

@@ -106,16 +106,28 @@ export class AvatarModal {
 
     // Attach event listeners
     const closeBtn = this.element.querySelector('.mitra-avatar-modal-close');
-    closeBtn.addEventListener('click', () => this.close());
+    if (closeBtn) {
+      closeBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.close();
+      });
+    }
 
     this.element.addEventListener('click', (e) => {
-      if (e.target === this.element) this.close();
+      if (e.target === this.element) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.close();
+      }
     });
 
     // Preset clicks
     const presetCards = this.element.querySelectorAll('.mitra-preset-card');
     presetCards.forEach(card => {
-      card.addEventListener('click', () => {
+      const handleSelect = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         const presetId = card.getAttribute('data-preset-id');
         const preset = COMPANION_PRESETS.find(p => p.id === presetId);
         if (preset) {
@@ -125,7 +137,8 @@ export class AvatarModal {
             this.applyNewAvatar(preset.src);
           }
         }
-      });
+      };
+      card.addEventListener('click', handleSelect);
     });
 
     const fileInput = this.element.querySelector('.mitra-avatar-file-hidden');
@@ -182,6 +195,23 @@ export class AvatarModal {
     if (this.eventBus) {
       this.eventBus.emit('avatar.changed', { avatar: newAvatar });
     }
+
+    // Sync to localStorage and dispatch global window events for host app (React TopBar, etc.)
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('mitra_companion_asset', newAvatar);
+        localStorage.setItem('mitra_avatar_custom', newAvatar);
+        localStorage.setItem('mitra_custom_avatar', newAvatar);
+        localStorage.setItem('mitra_avatar_data_url', newAvatar);
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('mitra:companion-changed', { detail: { companionAvatar: newAvatar, companionName: 'Mitra Companion' } }));
+        window.dispatchEvent(new CustomEvent('mitra:avatar-changed', { detail: { avatar: newAvatar } }));
+      }
+    } catch (err) {
+      console.warn('[AvatarModal] Non-critical localStorage sync error:', err);
+    }
+
     this.close();
 
     try {
@@ -199,6 +229,22 @@ export class AvatarModal {
     if (this.eventBus) {
       this.eventBus.emit('avatar.changed', { avatar: 'default' });
     }
+
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem('mitra_companion_asset');
+        localStorage.removeItem('mitra_avatar_custom');
+        localStorage.removeItem('mitra_custom_avatar');
+        localStorage.removeItem('mitra_avatar_data_url');
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('mitra:companion-changed', { detail: { companionAvatar: '/assets/mitra_avatar_default.png', companionName: 'Mitra Companion' } }));
+        window.dispatchEvent(new CustomEvent('mitra:avatar-changed', { detail: { avatar: 'default' } }));
+      }
+    } catch (err) {
+      console.warn('[AvatarModal] Non-critical localStorage remove error:', err);
+    }
+
     this.close();
 
     try {
@@ -222,6 +268,12 @@ export class AvatarModal {
     if (this.eventBus) {
       this.eventBus.emit('avatar.changed', { avatar: objectUrl });
     }
+    try {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('mitra:companion-changed', { detail: { companionAvatar: objectUrl, companionName: 'Custom Companion' } }));
+        window.dispatchEvent(new CustomEvent('mitra:avatar-changed', { detail: { avatar: objectUrl } }));
+      }
+    } catch (err) {}
     this.close();
 
     // 2. Read file to Base64 in background for permanent persistence in IndexedDB
@@ -229,6 +281,16 @@ export class AvatarModal {
     reader.onload = async (evt) => {
       const dataUrl = evt.target.result;
       setCachedActiveAvatar(dataUrl, isVideo);
+      try {
+        if (typeof localStorage !== 'undefined' && dataUrl.length < 2 * 1024 * 1024) {
+          localStorage.setItem('mitra_companion_asset', dataUrl);
+          localStorage.setItem('mitra_avatar_custom', dataUrl);
+        }
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('mitra:companion-changed', { detail: { companionAvatar: dataUrl, companionName: 'Custom Companion' } }));
+          window.dispatchEvent(new CustomEvent('mitra:avatar-changed', { detail: { avatar: dataUrl } }));
+        }
+      } catch (e) {}
       try {
         await companionStorage.setAsset('current_companion', dataUrl);
       } catch (err) {
@@ -239,11 +301,17 @@ export class AvatarModal {
   }
 
   open() {
+    this.isOpen = true;
     this.render();
     this.element.style.display = 'flex';
   }
 
-  close() {
+  close(notifyOnClose = true) {
+    const wasOpen = this.isOpen || this.element.style.display === 'flex';
+    this.isOpen = false;
     this.element.style.display = 'none';
+    if (wasOpen && notifyOnClose && typeof this.onClose === 'function') {
+      try { this.onClose(); } catch (err) {}
+    }
   }
 }

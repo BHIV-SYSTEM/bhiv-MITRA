@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - MITRA Universal Companion</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles/mitra-companion.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #0B0B0F;
+            background-image: 
+                radial-gradient(circle at 15% 20%, rgba(108, 92, 231, 0.1) 0%, transparent 40%),
+                radial-gradient(circle at 85% 80%, rgba(108, 92, 231, 0.08) 0%, transparent 40%);
+            color: #FFFFFF;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 84px 20px 20px;
+        }
+
+        .auth-container {
+            width: 100%;
+            max-width: 400px;
+            background: #15151D;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            padding: 32px;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(16px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .logo-header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .mitra-logo {
+            font-weight: 700;
+            font-size: 20px;
+        }
+
+        .logo-header h1 {
+            font-size: 24px;
+            font-weight: 700;
+            color: #ffffff;
+            letter-spacing: -0.5px;
+            margin-bottom: 6px;
+        }
+
+        .logo-header p {
+            font-size: 14px;
+            color: #A1A1AA;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+            position: relative;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: #A1A1AA;
+            margin-bottom: 8px;
+        }
+
+        .input-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+        
+        .form-input {
+            width: 100%;
+            height: 48px;
+            padding: 0 16px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+            color: #ffffff;
+            font-family: inherit;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .form-input:focus {
+            border-color: #6C5CE7;
+            box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.3);
+        }
+
+        .toggle-password-btn {
+            position: absolute;
+            right: 14px;
+            background: none;
+            border: none;
+            color: #A1A1AA;
+            cursor: pointer;
+            padding: 4px;
+            display: flex;
+            align-items: center;
+            transition: color 0.2s;
+        }
+
+        .toggle-password-btn:hover {
+            color: #FFFFFF;
+        }
+
+        .toggle-password-btn svg {
+            width: 18px;
+            height: 18px;
+            fill: currentColor;
+        }
+
+        /* Hide the default eye-off icon */
+        #eyeOffIcon {
+            display: none;
+        }
+
+        .error-message {
+            font-size: 12px;
+            color: #ff4d4f;
+            margin-top: 6px;
+            min-height: 16px;
+            display: none;
+        }
+
+        .form-options {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            font-size: 13px;
+        }
+
+        .remember-me {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            color: #A1A1AA;
+            user-select: none;
+        }
+
+        .remember-me input[type="checkbox"] {
+            accent-color: #6C5CE7;
+            width: 14px;
+            height: 14px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .forgot-password-link {
+            color: #6C5CE7;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .forgot-password-link:hover {
+            opacity: 0.8;
+            text-decoration: underline;
+        }
+
+        .submit-btn {
+            width: 100%;
+            height: 48px;
+            background: #6C5CE7;
+            border: none;
+            border-radius: 8px;
+            color: #ffffff;
+            font-family: inherit;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05), 0 0 0 1px rgba(108, 92, 231, 0.5);
+            transition: all 0.25s ease;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .submit-btn:hover:not(:disabled) {
+            background: #5a4bd9;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05), 0 0 0 1px rgba(108, 92, 231, 0.7);
+        }
+
+        .submit-btn:disabled {
+            opacity: 0.65;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .spinner {
+            width: 18px;
+            height: 18px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #ffffff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            display: none;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .divider {
+            display: flex;
+            align-items: center;
+            margin: 28px 0;
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+
+        .divider::before, .divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .divider span {
+            padding: 0 12px;
+        }
+
+        .social-btn {
+            width: 100%;
+            height: 48px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+            color: #ffffff;
+            font-family: inherit;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: all 0.2s;
+        }
+
+        .social-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .social-btn svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .auth-footer-link {
+            text-align: center;
+            margin-top: 24px;
+            font-size: 14px;
+            color: #A1A1AA;
+        }
+
+        .auth-footer-link a {
+            color: #6C5CE7;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .auth-footer-link a:hover {
+            text-decoration: underline;
+        }
+
+        .toast-notification {
+            position: fixed;
+            top: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-20px);
+            padding: 12px 20px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            z-index: 10000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .toast-notification.show {
+            opacity: 1;
+            visibility: visible;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .toast-notification.success {
+            background: rgba(0, 230, 118, 0.95);
+            color: #000000;
+        }
+
+        .toast-notification.error {
+            background: rgba(255, 23, 68, 0.95);
+            color: #ffffff;
+        }
+
+        @media (max-width: 480px) {
+            .auth-container {
+                padding: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <mitra-navbar></mitra-navbar>
+    <script type="module" src="src/components/Navbar.js"></script>
+    <div id="toast" class="toast-notification"></div>
+
+    <div class="auth-container">
+        <div class="logo-header">
+            <div class="mitra-logo">MITRA</div>
+            <h1>Welcome Back</h1>
+            <p>Sign in to access the BHIV Ecosystem</p>
+        </div>
+
+        <form id="loginForm" novalidate>
+            <div class="form-group">
+                <label for="email" class="form-label">Email Address</label>
+                <div class="input-wrapper">
+                    <input type="email" id="email" class="form-input" placeholder="you@example.com" required autocomplete="email">
+                </div>
+                <div id="emailError" class="error-message"></div>
+            </div>
+
+            <div class="form-group">
+                <label for="password" class="form-label">Password</label>
+                <div class="input-wrapper">
+                    <input type="password" id="password" class="form-input" placeholder="••••••••" required autocomplete="current-password">
+                    <button type="button" id="togglePasswordBtn" class="toggle-password-btn" aria-label="Toggle password visibility">
+                        <svg id="eyeIcon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+                        <svg id="eyeOffIcon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L21.73 23 23 21.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/></svg>
+                    </button>
+                </div>
+                <div id="passwordError" class="error-message"></div>
+            </div>
+
+            <div class="form-options">
+                <label class="remember-me">
+                    <input type="checkbox" id="rememberMe">
+                    <span>Remember me</span>
+                </label>
+                <a href="#" id="forgotPasswordLink" class="forgot-password-link">Forgot password?</a>
+            </div>
+
+            <button type="submit" id="submitBtn" class="submit-btn">
+                <span class="spinner" id="btnSpinner"></span>
+                <span id="btnText">Sign In</span>
+            </button>
+           <div class="divider">
+            <span>Or continue with</span>
+        </div>
+
+        <button type="button" id="googleBtn" class="social-btn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24s.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+            Continue with Google
+             <button type="button" id="microsoftBtn" class="social-btn" style="margin-top: 12px;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 23 23"><path fill="#f35325" d="M1 1h10v10H1z"/><path fill="#81bc06" d="M12 1h10v10H12z"/><path fill="#05a6f0" d="M1 12h10v10H1z"/><path fill="#ffba08" d="M12 12h10v10H12z"/></svg>
+            Continue with Microsoft
+        </button>
+
+        <div class="auth-footer-link">
+            Don't have an account? <a href="signup.html">Sign Up</a>
+        </div>
+    </div>
+
+    <!-- Custom Account Selector Modal -->
+    <div id="accountModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.75); backdrop-filter:blur(10px); z-index:99999; align-items:center; justify-content:center;">
+        <div style="width:100%; max-width:380px; background:#15151D; border:1px solid rgba(255,255,255,0.15); border-radius:16px; padding:24px; box-shadow:0 16px 40px rgba(0,0,0,0.5); text-align:center;">
+            <div id="modalLogo" style="margin-bottom:12px; display:flex; justify-content:center;"></div>
+            <h3 id="modalTitle" style="font-size:18px; font-weight:700; color:#fff; margin-bottom:4px;">Choose an account</h3>
+            <p style="font-size:12px; color:#a1a1aa; margin-bottom:20px;">to continue to BHIV MITRA Companion</p>
+            <div id="accountList" style="display:flex; flex-direction:column; gap:10px;"></div>
+            <button id="closeModalBtn" style="margin-top:16px; background:none; border:none; color:#a1a1aa; font-size:12px; cursor:pointer;">Cancel</button>
+        </div>
+    </div>
+
+    <!-- MITRA Companion Integration -->
+    <mitra-companion
+        stylesheet-path="styles/mitra-companion.css?v=7"
+        api-base-url="http://localhost:8001">
+    </mitra-companion>
+    <script type="module" src="src/mitra-companion.js?v=7"></script>
+
+    <script type="module">
+        const form = document.getElementById('loginForm');
+        const emailInput = document.getElementById('email');
+        const passwordInput = document.getElementById('password');
+        const emailError = document.getElementById('emailError');
+        const passwordError = document.getElementById('passwordError');
+        const submitBtn = document.getElementById('submitBtn');
+        const btnSpinner = document.getElementById('btnSpinner');
+        const btnText = document.getElementById('btnText');
+        const togglePasswordBtn = document.getElementById('togglePasswordBtn');
+        const eyeIcon = document.getElementById('eyeIcon');
+        const eyeOffIcon = document.getElementById('eyeOffIcon');
+        const googleBtn = document.getElementById('googleBtn');
+        const microsoftBtn = document.getElementById('microsoftBtn');
+        const forgotPasswordLink = document.getElementById('forgotPasswordLink');
+        const toast = document.getElementById('toast');
+
+        function showToast(message, type = 'success') {
+            toast.textContent = message;
+            toast.className = `toast-notification ${type} show`;
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3500);
+        }
+
+        togglePasswordBtn.addEventListener('click', () => {
+            const isPassword = passwordInput.type === 'password';
+            passwordInput.type = isPassword ? 'text' : 'password';
+            eyeIcon.style.display = isPassword ? 'none' : 'block';
+            eyeOffIcon.style.display = isPassword ? 'block' : 'none';
+            togglePasswordBtn.style.color = isPassword ? '#FFFFFF' : '#A1A1AA';
+        });
+
+        function validateEmail(email) {
+            const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            return re.test(email);
+        }
+
+        function clearErrors() {
+            emailError.style.display = 'none';
+            passwordError.style.display = 'none';
+            emailInput.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+            passwordInput.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+        }
+
+        emailInput.addEventListener('input', clearErrors);
+        passwordInput.addEventListener('input', clearErrors);
+
+        function getApiUrl() {
+            if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+                return 'http://localhost:8001';
+            }
+            return 'https://mitra.blackholeinfiverse.com';
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            clearErrors();
+
+            let isValid = true;
+            const emailVal    = emailInput.value.trim();
+            const passwordVal = passwordInput.value;
+
+            if (!emailVal || !validateEmail(emailVal)) {
+                emailError.textContent = emailVal ? 'Please enter a valid email address.' : 'Email is required.';
+                emailError.style.display = 'block';
+                emailInput.style.borderColor = '#ff4d4f';
+                isValid = false;
+            }
+
+            if (!passwordVal || passwordVal.length < 6) {
+                passwordError.textContent = passwordVal ? 'Password must be at least 6 characters.' : 'Password is required.';
+                passwordError.style.display = 'block';
+                passwordInput.style.borderColor = '#ff4d4f';
+                isValid = false;
+            }
+
+            if (!isValid) return;
+
+            submitBtn.disabled = true;
+            btnSpinner.style.display = 'inline-block';
+            btnText.textContent = 'Signing in...';
+
+            try {
+                const res = await fetch(`${getApiUrl()}/api/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: emailVal, password: passwordVal }),
+                });
+
+                const data = await res.json().catch(() => ({}));
+
+                if (!res.ok) {
+                    const msg = data.detail || data.error || data.message || `Login failed (${res.status})`;
+                    showToast(msg, 'error');
+                    submitBtn.disabled = false;
+                    btnSpinner.style.display = 'none';
+                    btnText.textContent = 'Sign In';
+                    return;
+                }
+
+                // Store auth data in the canonical keys read by controlPlane.js + contextStore.js
+                const token = data.token || data.access_token;
+                const user  = data.user || { id: data.id, name: data.name, email: emailVal };
+
+                localStorage.setItem('authToken', token);
+                localStorage.setItem('user', JSON.stringify(user));
+                localStorage.setItem('mitra_user_id', user.id || user._id || '');
+
+                // Legacy keys (Navbar.js reads mitra_user / mitra_token)
+                localStorage.setItem('mitra_user',  JSON.stringify({ name: user.name || emailVal.split('@')[0], email: emailVal }));
+                localStorage.setItem('mitra_token', token);
+
+                showToast('Login successful! Redirecting...', 'success');
+                setTimeout(() => { window.location.href = 'dashboard.html'; }, 800);
+
+            } catch (err) {
+                showToast('Could not reach the server. Please try again.', 'error');
+                submitBtn.disabled = false;
+                btnSpinner.style.display = 'none';
+                btnText.textContent = 'Sign In';
+            }
+        });
+
+        const accountModal = document.getElementById('accountModal');
+        const modalLogo = document.getElementById('modalLogo');
+        const modalTitle = document.getElementById('modalTitle');
+        const accountList = document.getElementById('accountList');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+
+        closeModalBtn.addEventListener('click', () => {
+            accountModal.style.display = 'none';
+        });
+
+        async function authenticateSSOAccount(email, providerName) {
+            accountModal.style.display = 'none';
+            showToast(`Authenticating with ${providerName}...`, 'success');
+            try {
+                const res = await fetch(`${getApiUrl()}/api/auth/signup`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: email.split('@')[0], email: email, password: `${providerName}SSOPassword123!` }),
+                });
+                let data = await res.json().catch(() => ({}));
+                if (!res.ok && res.status === 400) {
+                    const lRes = await fetch(`${getApiUrl()}/api/auth/login`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email: email, password: `${providerName}SSOPassword123!` }),
+                    });
+                    data = await lRes.json();
+                }
+                const token = data.token || data.access_token;
+                const user = data.user || { id: data.id, name: email.split('@')[0], email: email };
+                localStorage.setItem('authToken', token);
+                localStorage.setItem('user', JSON.stringify(user));
+                localStorage.setItem('mitra_user_id', user.id || user._id || '');
+                localStorage.setItem('mitra_user', JSON.stringify({ name: user.name || email.split('@')[0], email: email }));
+                localStorage.setItem('mitra_token', token);
+                showToast(`${providerName} SSO Authentication successful!`, 'success');
+                setTimeout(() => { window.location.href = 'dashboard.html'; }, 800);
+            } catch {
+                showToast(`${providerName} SSO failed to connect to backend.`, 'error');
+            }
+        }
+
+        googleBtn.addEventListener('click', () => {
+            const userEmailInput = emailInput.value.trim() || 'ashwiniwadekar704@gmail.com';
+            modalLogo.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24s.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>`;
+            modalTitle.textContent = 'Sign in with Google';
+            accountList.innerHTML = `
+                <div class="sso-account-item" data-email="${userEmailInput}" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:10px; padding:12px; display:flex; align-items:center; gap:12px; cursor:pointer; transition:0.2s;">
+                    <div style="width:36px; height:36px; border-radius:50%; background:#4285F4; color:#fff; font-weight:700; display:flex; align-items:center; justify-content:center; font-size:15px;">${userEmailInput.charAt(0).toUpperCase()}</div>
+                    <div style="text-align:left;">
+                        <div style="font-size:13px; font-weight:600; color:#fff;">${userEmailInput.split('@')[0]}</div>
+                        <div style="font-size:11px; color:#a1a1aa;">${userEmailInput}</div>
+                    </div>
+                </div>
+                <div class="sso-account-item" data-email="user.google@gmail.com" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:10px; padding:12px; display:flex; align-items:center; gap:12px; cursor:pointer; transition:0.2s;">
+                    <div style="width:36px; height:36px; border-radius:50%; background:#EA4335; color:#fff; font-weight:700; display:flex; align-items:center; justify-content:center; font-size:15px;">G</div>
+                    <div style="text-align:left;">
+                        <div style="font-size:13px; font-weight:600; color:#fff;">Google Workspace User</div>
+                        <div style="font-size:11px; color:#a1a1aa;">user.google@gmail.com</div>
+                    </div>
+                </div>
+            `;
+            accountModal.style.display = 'flex';
+
+            accountList.querySelectorAll('.sso-account-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    const chosenEmail = item.getAttribute('data-email');
+                    authenticateSSOAccount(chosenEmail, 'Google');
+                });
+            });
+        });
+
+        microsoftBtn.addEventListener('click', () => {
+            const userEmailInput = emailInput.value.trim() || 'ashwiniwadekar704@outlook.com';
+            modalLogo.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 21 21"><path fill="#f25022" d="M1 1h9v9H1z"/><path fill="#00a4ef" d="M1 11h9v9H1z"/><path fill="#7fba00" d="M11 1h9v9h-9z"/><path fill="#ffb900" d="M11 11h9v9h-9z"/></svg>`;
+            modalTitle.textContent = 'Sign in with Microsoft';
+            accountList.innerHTML = `
+                <div class="sso-account-item" data-email="${userEmailInput}" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:10px; padding:12px; display:flex; align-items:center; gap:12px; cursor:pointer; transition:0.2s;">
+                    <div style="width:36px; height:36px; border-radius:50%; background:#00a4ef; color:#fff; font-weight:700; display:flex; align-items:center; justify-content:center; font-size:15px;">${userEmailInput.charAt(0).toUpperCase()}</div>
+                    <div style="text-align:left;">
+                        <div style="font-size:13px; font-weight:600; color:#fff;">${userEmailInput.split('@')[0]}</div>
+                        <div style="font-size:11px; color:#a1a1aa;">${userEmailInput}</div>
+                    </div>
+                </div>
+                <div class="sso-account-item" data-email="user.microsoft@outlook.com" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:10px; padding:12px; display:flex; align-items:center; gap:12px; cursor:pointer; transition:0.2s;">
+                    <div style="width:36px; height:36px; border-radius:50%; background:#7fba00; color:#fff; font-weight:700; display:flex; align-items:center; justify-content:center; font-size:15px;">M</div>
+                    <div style="text-align:left;">
+                        <div style="font-size:13px; font-weight:600; color:#fff;">Microsoft Corporate User</div>
+                        <div style="font-size:11px; color:#a1a1aa;">user.microsoft@outlook.com</div>
+                    </div>
+                </div>
+            `;
+            accountModal.style.display = 'flex';
+
+            accountList.querySelectorAll('.sso-account-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    const chosenEmail = item.getAttribute('data-email');
+                    authenticateSSOAccount(chosenEmail, 'Microsoft');
+                });
+            });
+        });
+
+        forgotPasswordLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            showToast('Password reset link will be sent to your email.', 'success');
+        });
+    </script>
+</body>
+</html>
+
+

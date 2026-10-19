@@ -8,7 +8,7 @@
     "action_type": "telegram",
     "summary": "Telegram message queued",
     "trace_id": "test_trace_001",
-    "timestamp": "2026-09-03T11:02:00.498413",
+    "timestamp": "2026-08-21T06:33:29.888100",
     "service": "execution_service"
   }
 }

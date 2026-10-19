@@ -91,6 +91,62 @@ def _get_user_events_from_db(user_id: str) -> List[Dict[str, Any]]:
         return []
 
 
+def _parse_event_datetime_and_title(message: str) -> tuple[str, datetime, datetime]:
+    """Parse clean title, start datetime (UTC), and end datetime (UTC) from natural language query."""
+    import re
+    now = datetime.now(timezone.utc)
+    # Estimate local machine date (e.g. IST = UTC+5:30)
+    local_now = now + timedelta(hours=5, minutes=30)
+    target_date = local_now.date()
+    msg_lower = message.lower()
+
+    # 1. Date Parsing (tomorrow, today, day after tomorrow)
+    if "tomorrow" in msg_lower and "day after" not in msg_lower:
+        target_date = (local_now + timedelta(days=1)).date()
+    elif "day after tomorrow" in msg_lower:
+        target_date = (local_now + timedelta(days=2)).date()
+
+    # 2. Time Parsing (e.g., 4 pm, 4:00 pm, 10 am, 16:00)
+    target_hour = (local_now.hour + 1) % 24
+    target_minute = 0
+
+    time_match = re.search(r'\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b', msg_lower)
+    if time_match:
+        hr = int(time_match.group(1))
+        mn = int(time_match.group(2)) if time_match.group(2) else 0
+        ampm = time_match.group(3)
+        if ampm == "pm" and hr < 12:
+            hr += 12
+        elif ampm == "am" and hr == 12:
+            hr = 0
+        target_hour = hr
+        target_minute = mn
+    else:
+        time_24 = re.search(r'\b([01]?\d|2[0-3]):([0-5]\d)\b', msg_lower)
+        if time_24:
+            target_hour = int(time_24.group(1))
+            target_minute = int(time_24.group(2))
+
+    # Construct local datetime & convert to UTC for Google Calendar ISO strings
+    local_start = datetime(target_date.year, target_date.month, target_date.day, target_hour, target_minute)
+    utc_start = local_start - timedelta(hours=5, minutes=30)
+    utc_end = utc_start + timedelta(hours=1)
+
+    # 3. Clean Title Extraction
+    clean_title = message
+    clean_title = re.sub(r'(?i)^(create|schedule|add)\s+(a\s+)?(calendar\s+)?(event|meeting)?\s*', '', clean_title).strip()
+    clean_title = re.sub(r'(?i)\b(tomorrow|today|day after tomorrow)\b', '', clean_title)
+    clean_title = re.sub(r'(?i)\bat\s+\d{1,2}(?::\d{2})?\s*(am|pm)?\b', '', clean_title)
+    clean_title = re.sub(r'(?i)\b\d{1,2}(?::\d{2})?\s*(am|pm)\b', '', clean_title)
+    clean_title = re.sub(r'[\s:.,-]+$', '', clean_title).strip()
+    clean_title = re.sub(r'^\s*[\s:.,-]+', '', clean_title).strip()
+
+    if not clean_title or len(clean_title) < 2:
+        clean_title = "Meeting / Event"
+
+    return clean_title, utc_start, utc_end
+
+
 class CalendarCapability(BaseCapability):
     @property
     def name(self) -> str:
@@ -140,18 +196,31 @@ class CalendarCapability(BaseCapability):
                     actions=[{"label": "Add to calendar", "action": "Add to calendar"}],
                 )
 
-            # Otherwise: CREATE EVENT action
-            title = message
-            for prefix in ("create a calendar event", "create calendar event", "create event",
-                          "add event", "schedule a meeting", "schedule meeting", "schedule", "add to calendar", "calendar event"):
-                if msg_lower.startswith(prefix):
-                    title = message[len(prefix):].strip().strip(":.,-") or message
-                    break
+            # Smart Natural Language Datetime & Clean Title Parsing
+            title, start_dt, end_dt = _parse_event_datetime_and_title(message)
 
-            if not title or len(title) < 2:
-                title = "New Event"
+# Save to MongoDB
+            event_id = _save_event_to_db(user_id, title, start_dt.isoformat(), time_str, trace_id or "")
 
-            # Parse start and end time
+            # Fetch user's preferred calendar provider from DB or Cache
+            from app.api.integrations import _CALENDAR_PREF_CACHE
+            preferred_provider = _CALENDAR_PREF_CACHE.get(user_id, "google")
+            try:
+                from pymongo import MongoClient
+                import os
+                uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
+                db_name = os.getenv("DATABASE_NAME", "ai_assistant")
+                client = MongoClient(uri, serverSelectionTimeoutMS=2000)
+                db = client[db_name]
+                user_doc = db["user_integrations"].find_one({"user_id": user_id})
+                if user_doc and "calendar" in user_doc and user_doc["calendar"].get("preferred_provider"):
+                    preferred_provider = user_doc["calendar"]["preferred_provider"].lower().strip()
+            except Exception as e:
+                logger.warning(f"Could not fetch user calendar preference from DB: {e}")
+
+            # Generate Native Device Calendar Sync URLs (Google, Outlook, Apple iCal, Zoho Calendar)
+
+# Parse start and end time
             now = datetime.now(timezone.utc)
             if date_str and "T" in date_str:
                 try:
@@ -216,10 +285,35 @@ class CalendarCapability(BaseCapability):
             start_iso = start_dt.strftime("%Y%m%dT%H%M%SZ")
             end_iso = end_dt.strftime("%Y%m%dT%H%M%SZ")
             encoded_title = urllib.parse.quote(title)
-            encoded_details = urllib.parse.quote("Scheduled via MITRA Companion Engine")
+            encoded_details = urllib.parse.quote("Scheduled via MITRA Universal Companion Engine")
 
             google_url = f"https://calendar.google.com/calendar/render?action=TEMPLATE&text={encoded_title}&dates={start_iso}/{end_iso}&details={encoded_details}"
+            apple_url = f"webcal://localhost:8000/api/calendar/feed.ics?user_id={urllib.parse.quote(user_id)}"
             outlook_url = f"https://outlook.live.com/calendar/0/deeplink/compose?path=/calendar/action/compose&rru=addevent&subject={encoded_title}&startdt={start_dt.isoformat()}&enddt={end_dt.isoformat()}&body={encoded_details}"
+            zoho_url = f"https://calendar.zoho.com/calendar/export/event?title={encoded_title}&start={start_iso}&end={end_iso}&description={encoded_details}"
+
+            sync_urls = {
+                "google": google_url,
+                "apple": apple_url,
+                "microsoft": outlook_url,
+                "zoho": zoho_url,
+            }
+
+            actions = [
+                {"label": f"🟢 Sync to {preferred_provider.capitalize()} Calendar (Primary)", "action": sync_urls.get(preferred_provider, google_url)},
+                {"label": "🟢 Google Calendar", "action": google_url},
+                {"label": "🍎 Apple Calendar (iCal)", "action": apple_url},
+                {"label": "🟦 Microsoft Outlook", "action": outlook_url},
+                {"label": "🟡 Zoho Calendar", "action": zoho_url},
+            ]
+
+            summary = (
+                f"Calendar event created: '{title}'. Sync directly to your preferred calendar below:\n\n"
+                f"🟢 Google Calendar: {google_url}\n"
+                f"🟦 Microsoft Outlook: {outlook_url}\n"
+                f"🍎 Apple Calendar (iCal): {apple_url}\n"
+                f"🟡 Zoho Calendar: {zoho_url}"
+            )
 
             if synchronized and provider == "google":
                 summary = f"Calendar event created: '{title}' (Created in Google Calendar)."
@@ -239,6 +333,14 @@ class CalendarCapability(BaseCapability):
                     "date": start_dt.isoformat(),
                     "time": time_str,
                     "persisted": event_id is not None,
+"preferred_provider": preferred_provider,
+                    "sync_urls": sync_urls,
+                    "event": {
+                        "id": event_id,
+                        "title": title,
+                        "start": start_dt.isoformat(),
+                        "end": end_dt.isoformat()
+                    },
                     "sync_status": sync_status,
                     "synchronized": synchronized,
                     "provider": provider,
@@ -249,10 +351,7 @@ class CalendarCapability(BaseCapability):
                     }
                 },
                 trace_id=trace_id,
-                actions=[
-                    {"label": "📅 Add to Google Calendar", "action": google_url},
-                    {"label": "📆 Add to Outlook Calendar", "action": outlook_url},
-                ],
+                actions=actions,
             )
         except Exception as exc:
             logger.warning("CalendarCapability failed: %s", exc)

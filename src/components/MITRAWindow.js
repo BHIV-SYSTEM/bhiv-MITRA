@@ -1,5 +1,5 @@
-import { Header } from './Header.js';
-import { ConversationPanel } from './ConversationPanel.js';
+import { Header } from './Header.js?v=v25';
+import { ConversationPanel } from './ConversationPanel.js?v=25';
 import { Footer } from './Footer.js';
 import { CapabilityLauncher } from './CapabilityLauncher.js';
 import { HealthPanel } from './HealthPanel.js';
@@ -20,7 +20,6 @@ export class MITRAWindow {
     this.header = new Header(
       () => this.minimize(),
       () => {
-        // Toggle health panel
         this.healthPanel.toggle();
       },
       () => {
@@ -37,7 +36,7 @@ export class MITRAWindow {
       if (window.__mitra_notif_drawer) {
         window.__mitra_notif_drawer.toggle();
       } else {
-        import('./NotificationDrawer.js').then(({ NotificationDrawer }) => {
+        import('./NotificationDrawer.js?v=v25').then(({ NotificationDrawer }) => {
           window.__mitra_notif_drawer = new NotificationDrawer(this.eventBus);
           document.body.appendChild(window.__mitra_notif_drawer.element);
           window.__mitra_notif_drawer.open();
@@ -200,12 +199,23 @@ export class MITRAWindow {
 
   expand() {
     this.state = 'expanded';
-    this.element.classList.add('expanded');
+    this.element.classList.remove('minimized');
+    this.element.classList.add('expanded', 'active', 'open');
+    this.element.style.setProperty('display', 'flex', 'important');
+    this.element.style.setProperty('visibility', 'visible', 'important');
+    this.element.style.setProperty('opacity', '1', 'important');
+    this.element.style.setProperty('pointer-events', 'auto', 'important');
+    this.element.style.setProperty('transform', 'translateY(0) scale(1)', 'important');
   }
 
   minimize() {
     this.state = 'minimized';
-    this.element.classList.remove('expanded');
+    this.element.classList.remove('expanded', 'active', 'open');
+    this.element.classList.add('minimized');
+    this.element.style.setProperty('display', 'none', 'important');
+    this.element.style.setProperty('visibility', 'hidden', 'important');
+    this.element.style.setProperty('opacity', '0', 'important');
+    this.element.style.setProperty('pointer-events', 'none', 'important');
     if (this.onMinimize) this.onMinimize();
   }
 }
