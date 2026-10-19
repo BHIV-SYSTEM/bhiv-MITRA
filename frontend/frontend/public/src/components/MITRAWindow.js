@@ -199,12 +199,32 @@ export class MITRAWindow {
 
   expand() {
     this.state = 'expanded';
-    this.element.classList.add('expanded');
+    this.element.classList.remove('minimized');
+    this.element.classList.add('expanded', 'active', 'open');
+    this.element.style.setProperty('display', 'flex', 'important');
+    this.element.style.setProperty('visibility', 'visible', 'important');
+    this.element.style.setProperty('opacity', '1', 'important');
+    this.element.style.setProperty('pointer-events', 'auto', 'important');
+    this.element.style.setProperty('transform', 'translateY(0) scale(1)', 'important');
+    if (this.conversation && typeof this.conversation.scrollToBottom === 'function') {
+      setTimeout(() => this.conversation.scrollToBottom(false), 50);
+    }
   }
 
   minimize() {
     this.state = 'minimized';
-    this.element.classList.remove('expanded');
-    if (this.onMinimize) this.onMinimize();
+    this.element.classList.remove('expanded', 'active', 'open');
+    this.element.classList.add('minimized');
+    this.element.style.setProperty('display', 'none', 'important');
+    this.element.style.setProperty('visibility', 'hidden', 'important');
+    this.element.style.setProperty('opacity', '0', 'important');
+    this.element.style.setProperty('pointer-events', 'none', 'important');
+    if (this.onMinimize) {
+      try {
+        this.onMinimize();
+      } catch (err) {
+        console.warn('[MITRA] onMinimize error:', err);
+      }
+    }
   }
 }

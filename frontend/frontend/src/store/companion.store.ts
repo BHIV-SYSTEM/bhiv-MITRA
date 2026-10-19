@@ -405,6 +405,18 @@ export function useIsMobile() {
 // ── Universal Chatbot Window Toggle Helper ──
 export function toggleMitraChatbotWindow(): boolean {
   try {
+    if (typeof (window as any).__MITRA_TOGGLE_ORB__ === 'function') {
+      (window as any).__MITRA_TOGGLE_ORB__();
+      const companion = document.querySelector('mitra-companion') as HTMLElement;
+      const shadow = companion?.shadowRoot;
+      const win = shadow?.querySelector('.mitra-window') as HTMLElement;
+      const isOpen = win
+        ? (win.classList.contains('expanded') || win.style.display === 'flex')
+        : !useCompanionStore.getState().chatbotOpen;
+      useCompanionStore.getState().setChatbotOpen(isOpen);
+      return isOpen;
+    }
+
     const companion = document.querySelector('mitra-companion') as HTMLElement;
     const shadow = companion?.shadowRoot;
     const shell = shadow?.querySelector('#mitra-shell') as HTMLElement;
@@ -412,12 +424,6 @@ export function toggleMitraChatbotWindow(): boolean {
 
     if (!companion || !shadow || !win) {
       console.warn('[MITRA] Companion web component or window not ready yet');
-      if (typeof (window as any).__MITRA_TOGGLE_ORB__ === 'function') {
-        try {
-          (window as any).__MITRA_TOGGLE_ORB__();
-          return true;
-        } catch (e) {}
-      }
       return false;
     }
 

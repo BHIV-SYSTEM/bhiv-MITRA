@@ -17,6 +17,21 @@ class MitraCompanion extends HTMLElement {
   connectedCallback() {
     try {
       window.__mitra_event_bus = eventBus;
+      
+      // Capture configuration attributes if provided
+      const apiAttr = this.getAttribute('api-base-url');
+      if (apiAttr && apiAttr.trim()) {
+        window.__MITRA_API_BASE_URL = apiAttr.trim();
+      }
+      const hostAppAttr = this.getAttribute('host-app');
+      if (hostAppAttr && hostAppAttr.trim()) {
+        window.__MITRA_HOST_APP = hostAppAttr.trim();
+      }
+      const userIdAttr = this.getAttribute('user-id');
+      if (userIdAttr && userIdAttr.trim()) {
+        try { contextStore.setUserId(userIdAttr.trim()); } catch (e) {}
+      }
+
       // Synchronously render UI immediately so the floating orb and chatbot window always mount without delay
       this.render();
 
@@ -199,16 +214,22 @@ class MitraCompanion extends HTMLElement {
         }
         mitraButton.hide();
         mitraWindow.expand();
+        this.style.setProperty('pointer-events', 'auto', 'important');
         if (contextStore.setWindowState) contextStore.setWindowState('expanded');
         window.dispatchEvent(new CustomEvent('mitra:orb-state-changed', { detail: { open: true } }));
       }
     };
 
+    const doMinimize = () => {
+      avatarModal.close(false);
+      mitraWindow.minimize();
+    };
+
     window.__MITRA_TOGGLE_ORB__ = toggleWindow;
-    window.__MITRA_MINIMIZE__ = () => mitraWindow.minimize();
+    window.__MITRA_MINIMIZE__ = doMinimize;
     eventBus.on('companion.toggle', toggleWindow);
     window.addEventListener('mitra:toggle-orb', toggleWindow);
-    window.addEventListener('mitra:minimize-orb', () => mitraWindow.minimize());
+    window.addEventListener('mitra:minimize-orb', doMinimize);
 
     // Window initial state:
     // Always start cleanly minimized as the floating orb so the chatbot screen never intrudes on page load

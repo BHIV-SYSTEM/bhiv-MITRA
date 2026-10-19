@@ -127,6 +127,7 @@ export class ConversationPanel {
           }
         }
       });
+      this.scrollToBottom(false);
     } else {
       this.fetchDynamicGreeting();
     }
@@ -1411,6 +1412,27 @@ export class ConversationPanel {
     return formatted;
   }
 
+
+  scrollToBottom(smooth = true) {
+    try {
+      requestAnimationFrame(() => {
+        if (this.element) {
+          if (smooth) {
+            this.element.scrollTo({
+              top: this.element.scrollHeight + 1000,
+              behavior: 'smooth'
+            });
+          } else {
+            this.element.scrollTop = this.element.scrollHeight + 1000;
+          }
+        }
+      });
+    } catch (e) {
+      if (this.element) {
+        this.element.scrollTop = this.element.scrollHeight + 1000;
+      }
+    }
+  }
 
   escapeHtml(text) {
     if (!text) return '';

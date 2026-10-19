@@ -137,7 +137,11 @@ mitra-companion[hide-fab="true"] #mitra-shell {
 }
 
 .mitra-window.expanded,
-.mitra-window.expanded * {
+.mitra-window.expanded *,
+.mitra-window.active,
+.mitra-window.active *,
+.mitra-window.open,
+.mitra-window.open * {
   pointer-events: auto !important;
 }
 
@@ -270,12 +274,21 @@ mitra-companion[hide-fab="true"] #mitra-shell {
   position: relative;
 }
 
-.mitra-window.expanded {
+.mitra-window.expanded,
+.mitra-window.active,
+.mitra-window.open {
   display: flex !important;
   opacity: 1 !important;
-  transform: translateY(0) scale(1);
+  transform: translateY(0) scale(1) !important;
   visibility: visible !important;
   pointer-events: auto !important;
+}
+
+.mitra-window.minimized {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 
 .mitra-window.maximized {
@@ -367,7 +380,8 @@ mitra-companion[hide-fab="true"] #mitra-shell {
 
 /* Content Area */
 .mitra-content {
-  flex: 1;
+  flex: 1 1 0%;
+  min-height: 0 !important;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -376,14 +390,38 @@ mitra-companion[hide-fab="true"] #mitra-shell {
 
 /* Chat */
 .mitra-chat {
-  flex: 1;
+  flex: 1 1 0%;
+  min-height: 0 !important;
+  height: 100%;
   padding: 16px 20px 24px;
-  overflow-y: auto;
+  overflow-y: auto !important;
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: 16px;
   box-sizing: border-box;
+  pointer-events: auto !important;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+}
+
+.mitra-chat::-webkit-scrollbar {
+  width: 6px;
+}
+
+.mitra-chat::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mitra-chat::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+}
+
+.mitra-chat::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.45);
 }
 
 /* Hero Badge Banner matching reference mockup */

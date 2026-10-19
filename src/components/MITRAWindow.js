@@ -206,6 +206,9 @@ export class MITRAWindow {
     this.element.style.setProperty('opacity', '1', 'important');
     this.element.style.setProperty('pointer-events', 'auto', 'important');
     this.element.style.setProperty('transform', 'translateY(0) scale(1)', 'important');
+    if (this.conversation && typeof this.conversation.scrollToBottom === 'function') {
+      setTimeout(() => this.conversation.scrollToBottom(false), 50);
+    }
   }
 
   minimize() {
@@ -216,6 +219,12 @@ export class MITRAWindow {
     this.element.style.setProperty('visibility', 'hidden', 'important');
     this.element.style.setProperty('opacity', '0', 'important');
     this.element.style.setProperty('pointer-events', 'none', 'important');
-    if (this.onMinimize) this.onMinimize();
+    if (this.onMinimize) {
+      try {
+        this.onMinimize();
+      } catch (err) {
+        console.warn('[MITRA] onMinimize error:', err);
+      }
+    }
   }
 }

@@ -3,31 +3,78 @@ import { contextStore } from './contextStore.js';
 
 export function getApiBaseUrl() {
   if (typeof window !== 'undefined' && window.__MITRA_API_BASE_URL) {
-    return window.__MITRA_API_BASE_URL;
-  }
-  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
-    return 'http://localhost:8001';
+    return window.__MITRA_API_BASE_URL.replace(/\/+$/, '');
   }
   if (typeof document !== 'undefined') {
     const attr = document.querySelector('mitra-companion')?.getAttribute('api-base-url');
-    if (attr) return attr;
+    if (attr && attr.trim()) {
+      return attr.trim().replace(/\/+$/, '');
+    }
+  }
+  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    // If running locally and no explicit production flag set, use local backend
+    if (!window.__MITRA_USE_PROD_API) {
+      return 'http://localhost:8001';
+    }
   }
   return 'https://mitra.blackholeinfiverse.com';
 }
 
 const API_KEY = 'bhiv-enterprise-key';
 
+/**
+ * Automatically provision a guest JWT token if no token exists in localStorage.
+ * Ensures all chat requests succeed against production backend without requiring prior login.
+ */
+export async function ensureAuthToken(forceRefresh = false) {
+  if (typeof localStorage === 'undefined') return null;
+  if (!forceRefresh) {
+    const existing = localStorage.getItem('token') || localStorage.getItem('authToken') || localStorage.getItem('jwt');
+    if (existing) return existing;
+  }
+
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/api/auth/guest`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': API_KEY,
+      },
+      body: JSON.stringify({}),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const token = data.access_token || data.token;
+      if (token) {
+        localStorage.setItem('token', token);
+        if (data.user?.id) {
+          localStorage.setItem('user_id', data.user.id);
+          try { contextStore.setUserId(data.user.id); } catch (e) {}
+        }
+        return token;
+      }
+    }
+  } catch (e) {
+    console.warn('[MITRA Auth] Guest token provisioning notice:', e);
+  }
+  return null;
+}
+
 /** Build request headers strictly complying with OpenAPI and JWT auth requirements. */
-function buildHeaders() {
+export async function buildHeaders(forceRefreshToken = false) {
   const headers = {
     'Content-Type': 'application/json',
     'X-API-Key': API_KEY,
   };
-  if (typeof localStorage !== 'undefined') {
-    const token = localStorage.getItem('token') || localStorage.getItem('authToken') || localStorage.getItem('jwt');
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
+  let token = null;
+  if (!forceRefreshToken && typeof localStorage !== 'undefined') {
+    token = localStorage.getItem('token') || localStorage.getItem('authToken') || localStorage.getItem('jwt');
+  }
+  if (!token) {
+    token = await ensureAuthToken(forceRefreshToken);
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
   }
   return headers;
 }
@@ -47,12 +94,18 @@ export class ControlPlane {
    */
   getHostContext() {
     const pathname = typeof window !== 'undefined' ? window.location.pathname || '' : '';
-    let hostApp = 'dashboard';
-    if (pathname.includes('/pages/samachar')) hostApp = 'samachar';
-    else if (pathname.includes('/pages/uniguru')) hostApp = 'uniguru';
-    else if (pathname.includes('/pages/gurukul')) hostApp = 'gurukul';
-    else if (pathname.includes('/pages/samruddhi')) hostApp = 'samruddhi';
-    else if (pathname.includes('/pages/setu')) hostApp = 'setu';
+    let hostApp = typeof window !== 'undefined' && window.__MITRA_HOST_APP ? window.__MITRA_HOST_APP : 'dashboard';
+    if (!window.__MITRA_HOST_APP) {
+      if (pathname.includes('/pages/samachar')) hostApp = 'samachar';
+      else if (pathname.includes('/pages/uniguru')) hostApp = 'uniguru';
+      else if (pathname.includes('/pages/gurukul')) hostApp = 'gurukul';
+      else if (pathname.includes('/pages/samruddhi')) hostApp = 'samruddhi';
+      else if (pathname.includes('/pages/setu')) hostApp = 'setu';
+      else if (typeof document !== 'undefined') {
+        const attrHost = document.querySelector('mitra-companion')?.getAttribute('host-app');
+        if (attrHost && attrHost.trim()) hostApp = attrHost.trim();
+      }
+    }
 
     return {
       host_app: hostApp,
@@ -157,12 +210,26 @@ export class ControlPlane {
       // ═══════════════════════════════════════════════════════════════════
 
       eventBus.emit('health.changed', { status: 'Executing' });
-      const response = await fetch(`${getApiBaseUrl()}/api/companion/chat`, {
+      let headers = await buildHeaders();
+      let response = await fetch(`${getApiBaseUrl()}/api/companion/chat`, {
         method: 'POST',
-        headers: buildHeaders(),
+        headers: headers,
         body: JSON.stringify(payload),
       });
 
+      if (!response.ok && (response.status === 401 || response.status === 403)) {
+        // Token expired or missing: auto-refresh guest JWT token and retry once
+        try {
+          headers = await buildHeaders(true);
+          response = await fetch(`${getApiBaseUrl()}/api/companion/chat`, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(payload),
+          });
+        } catch (retryErr) {
+          console.warn('[MITRA] Chat auth retry notice:', retryErr);
+        }
+      }
 
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) {

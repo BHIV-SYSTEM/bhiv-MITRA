@@ -20,8 +20,11 @@ export class Header {
         <button class="mitra-btn" id="btn-dock" title="Dock">
           <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zm-7-2h5v-5h-2v3h-3v2z"/></svg>
         </button>
-        <button class="mitra-btn" id="btn-minimize" title="Minimize">
+        <button class="mitra-btn" id="btn-minimize" title="Minimize Chatbot">
           <svg viewBox="0 0 24 24"><path d="M19 13H5v-2h14v2z"/></svg>
+        </button>
+        <button class="mitra-btn close-btn" id="btn-close" title="Close Chatbot">
+          <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
         </button>
       </div>
     `;
@@ -44,22 +47,61 @@ export class Header {
       });
     }
 
-    this.element.querySelector('#btn-minimize').addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (onMinimize) onMinimize();
-    });
+    const handleCloseOrMinimize = (e) => {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      if (typeof window !== 'undefined' && typeof window.__MITRA_MINIMIZE__ === 'function') {
+        window.__MITRA_MINIMIZE__();
+      } else if (onMinimize) {
+        onMinimize();
+      }
+    };
 
-    this.element.querySelector('#btn-dock').addEventListener('click', () => {
-      if (onDock) onDock();
-    });
+    const minBtn = this.element.querySelector('#btn-minimize');
+    if (minBtn) {
+      minBtn.addEventListener('click', handleCloseOrMinimize);
+      minBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+      minBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+    }
 
-    this.element.querySelector('#btn-avatar').addEventListener('click', () => {
-      if (onAvatarChange) onAvatarChange();
-    });
+    const closeBtn = this.element.querySelector('#btn-close');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', handleCloseOrMinimize);
+      closeBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+      closeBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+    }
 
-    this.element.querySelector('#btn-notif').addEventListener('click', () => {
-      if (this.onNotificationClick) this.onNotificationClick();
-    });
+    const dockBtn = this.element.querySelector('#btn-dock');
+    if (dockBtn) {
+      dockBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (onDock) onDock();
+      });
+      dockBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+      dockBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+    }
+
+    const avatarBtn = this.element.querySelector('#btn-avatar');
+    if (avatarBtn) {
+      avatarBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (onAvatarChange) onAvatarChange();
+      });
+      avatarBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+      avatarBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+    }
+
+    const notifBtn = this.element.querySelector('#btn-notif');
+    if (notifBtn) {
+      notifBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (this.onNotificationClick) this.onNotificationClick();
+      });
+      notifBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+      notifBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+    }
   }
 
   setUnreadBadgeCount(count) {
