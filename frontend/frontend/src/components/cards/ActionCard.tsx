@@ -49,11 +49,46 @@ const statusVariant = {
   pending: 'warning',
 } as const;
 
+export const INTERNAL_PRESENTATION_KEYS = new Set([
+  'trace_id',
+  'internal_trace_id',
+  'idempotency_key',
+  'governance_flags',
+  'decision',
+  'severity',
+  'ontology_reference',
+  'reasoning_trace',
+  'concept_resolution',
+  'status',
+  'status_code',
+  'error_code',
+  'delivery_state',
+  'latency_ms',
+  'source',
+  'verification_status',
+  'knowledge_evidence',
+  'fbtrace_id',
+  'account_id',
+  'user_id',
+  'execution_id',
+  'request_id',
+  '_debug',
+]);
+
 const ActionCard: React.FC<Props> = ({
   capability, intent, status, summary, data, actions = [],
   onAction, compact = false, className,
 }) => {
   const icon = capabilityIcon[capability] || '⚡';
+
+  // Filter internal plumbing fields from display while preserving meaningful user fields
+  const displayEntries = data
+    ? Object.entries(data).filter(([k, v]) => {
+        if (INTERNAL_PRESENTATION_KEYS.has(k.toLowerCase())) return false;
+        if (v === null || v === undefined || v === '') return false;
+        return true;
+      })
+    : [];
 
   return (
     <motion.div
@@ -91,9 +126,9 @@ const ActionCard: React.FC<Props> = ({
       </p>
 
       {/* Data snippets */}
-      {!compact && data && Object.keys(data).length > 0 && (
+      {!compact && displayEntries.length > 0 && (
         <div className="mt-2.5 p-2.5 bg-surface-raised rounded-md border border-border-subtle">
-          {Object.entries(data).slice(0, 3).map(([k, v]) => (
+          {displayEntries.slice(0, 4).map(([k, v]) => (
             <div key={k} className="flex justify-between items-baseline gap-2 text-xs py-0.5">
               <span className="text-text-muted capitalize">{k.replace(/_/g, ' ')}</span>
               <span className="text-text-primary font-medium truncate max-w-[60%]">

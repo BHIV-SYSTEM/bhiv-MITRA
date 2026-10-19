@@ -108,6 +108,184 @@ class CompanionResponse:
         }
 
 
+def is_internal_action_payload(obj: Any) -> bool:
+    """
+    Check if a parsed JSON object represents an internal capability/tool action payload
+    that should never be emitted as ordinary assistant prose.
+    """
+    if not isinstance(obj, dict):
+        return False
+    keys = {str(k).lower() for k in obj.keys()}
+    known_caps = {
+        "email", "calendar", "whatsapp", "reminder", "task", "notes",
+        "contacts", "notification", "browser", "document", "uniguru", "samachar", "search", "samruddhi"
+    }
+    if "action" in keys:
+        action_val = str(obj.get("action", "")).lower()
+        if any(k in keys for k in ("parameters", "params", "args", "arguments", "payload", "input")):
+            return True
+        if action_val in known_caps:
+            return True
+    if any(k in keys for k in ("tool", "tool_call", "tool_calls", "function_call")):
+        return True
+    if "function" in keys:
+        func_val = obj.get("function")
+        if isinstance(func_val, dict):
+            return True
+        if isinstance(func_val, str) and (func_val.lower() in known_caps or any(k in keys for k in ("arguments", "parameters", "args"))):
+            return True
+        if any(k in keys for k in ("arguments", "parameters", "name")):
+            return True
+    if "name" in keys and any(k in keys for k in ("parameters", "arguments", "params")):
+        name_val = str(obj.get("name", "")).lower()
+        if name_val in known_caps:
+            return True
+    if obj.get("type") in ("action", "tool_call", "function_call", "capability_call"):
+        return True
+    if obj.get("capability") in known_caps and any(k in keys for k in ("parameters", "params", "action")):
+        return True
+    return False
+
+
+async def filter_action_tokens(token_stream: AsyncIterator[str]) -> AsyncIterator[str]:
+    """
+    Buffer-aware streaming filter that recognizes and suppresses naked internal action/tool
+    JSON envelopes before they reach the user, while preserving markdown code fences,
+    legitimate user-requested JSON, and ordinary conversational text.
+    """
+    buffer: List[str] = []
+    in_code_fence = False
+    fence_backticks = 0
+    in_potential_json = False
+    brace_depth = 0
+    in_string = False
+    escape_next = False
+    max_buffer_chars = 4000
+
+    async for token in token_stream:
+        i = 0
+        while i < len(token):
+            ch = token[i]
+            if ch == '`':
+                fence_backticks += 1
+                if fence_backticks == 3:
+                    in_code_fence = not in_code_fence
+            else:
+                fence_backticks = 0
+            i += 1
+
+        if in_code_fence:
+            if buffer:
+                for b in buffer:
+                    yield b
+                buffer = []
+                in_potential_json = False
+                brace_depth = 0
+            yield token
+            continue
+
+        if not in_potential_json:
+            brace_idx = token.find('{')
+            if brace_idx == -1:
+                yield token
+            else:
+                pre_brace = token[:brace_idx]
+                if pre_brace:
+                    yield pre_brace
+                remainder = token[brace_idx:]
+                in_potential_json = True
+                brace_depth = 0
+                in_string = False
+                escape_next = False
+                buffer = [remainder]
+                for ch in remainder:
+                    if escape_next:
+                        escape_next = False
+                        continue
+                    if ch == '\\':
+                        if in_string:
+                            escape_next = True
+                        continue
+                    if ch == '"':
+                        in_string = not in_string
+                        continue
+                    if not in_string:
+                        if ch == '{':
+                            brace_depth += 1
+                        elif ch == '}':
+                            brace_depth -= 1
+                            if brace_depth == 0:
+                                buffered_text = ''.join(buffer)
+                                try:
+                                    parsed = json.loads(buffered_text.strip())
+                                    if is_internal_action_payload(parsed):
+                                        buffer = []
+                                        in_potential_json = False
+                                        break
+                                    else:
+                                        for b in buffer:
+                                            yield b
+                                        buffer = []
+                                        in_potential_json = False
+                                        break
+                                except Exception:
+                                    pass
+        else:
+            buffer.append(token)
+            for ch in token:
+                if escape_next:
+                    escape_next = False
+                    continue
+                if ch == '\\':
+                    if in_string:
+                        escape_next = True
+                    continue
+                if ch == '"':
+                    in_string = not in_string
+                    continue
+                if not in_string:
+                    if ch == '{':
+                        brace_depth += 1
+                    elif ch == '}':
+                        brace_depth -= 1
+                        if brace_depth == 0:
+                            buffered_text = ''.join(buffer)
+                            try:
+                                parsed = json.loads(buffered_text.strip())
+                                if is_internal_action_payload(parsed):
+                                    buffer = []
+                                    in_potential_json = False
+                                    break
+                                else:
+                                    for b in buffer:
+                                        yield b
+                                    buffer = []
+                                    in_potential_json = False
+                                    break
+                            except Exception:
+                                pass
+
+            if in_potential_json and sum(len(b) for b in buffer) > max_buffer_chars:
+                for b in buffer:
+                    yield b
+                buffer = []
+                in_potential_json = False
+                brace_depth = 0
+
+    if buffer:
+        buffered_text = ''.join(buffer)
+        try:
+            parsed = json.loads(buffered_text.strip())
+            if is_internal_action_payload(parsed):
+                buffer = []
+            else:
+                for b in buffer:
+                    yield b
+        except Exception:
+            for b in buffer:
+                yield b
+
+
 class CompanionOrchestrator:
     """
     The Mitra companion brain.
@@ -516,6 +694,23 @@ class CompanionOrchestrator:
                             "request_id": ctx.execution_id,
                             "delta": token,
                         }
+                elif capability_name == "uniguru":
+                    # When a successful UniGuru result contains user-facing data["answer"], deliver the answer directly
+                    ug_data = capability_result.data or {}
+                    ug_answer = ug_data.get("answer")
+                    if isinstance(ug_answer, str) and ug_answer.strip():
+                        response_text = ug_answer.strip()
+                    elif isinstance(ug_answer, dict) and ug_answer.get("response_content"):
+                        response_text = str(ug_answer.get("response_content")).strip()
+                    else:
+                        response_text = personality_engine.build_capability_confirm(
+                            capability_result.summary
+                        )
+                    yield {
+                        "type": "assistant_delta",
+                        "request_id": ctx.execution_id,
+                        "delta": response_text,
+                    }
                 else:
                     response_text = personality_engine.build_capability_confirm(
                         capability_result.summary
@@ -610,6 +805,14 @@ class CompanionOrchestrator:
                     "type": "assistant_delta",
                     "request_id": ctx.execution_id,
                     "delta": token,
+                }
+            if not response_text.strip():
+                fallback_msg = "I've processed your request."
+                response_text = fallback_msg
+                yield {
+                    "type": "assistant_delta",
+                    "request_id": ctx.execution_id,
+                    "delta": fallback_msg,
                 }
             await runtime_event_bus.publish(
                 event_type="completed",
@@ -717,10 +920,21 @@ class CompanionOrchestrator:
         Strips any trailing user turn from history that matches raw_message or current_user_message
         to prevent duplicate user messages when history is retrieved after add_turn().
         """
-        clean_history = [
-            {"role": h.get("role", "user"), "content": h.get("content", "")}
-            for h in history
-        ]
+        clean_history = []
+        for h in history:
+            role = h.get("role", "user")
+            content = h.get("content", "")
+            if role == "assistant" and content:
+                stripped = content.strip()
+                if stripped.startswith("{") and stripped.endswith("}"):
+                    try:
+                        parsed = json.loads(stripped)
+                        if is_internal_action_payload(parsed):
+                            continue
+                    except Exception:
+                        pass
+            clean_history.append({"role": role, "content": content})
+
         if clean_history and clean_history[-1].get("role") == "user":
             last_content = clean_history[-1].get("content", "")
             if (raw_message and last_content == raw_message) or last_content == current_user_message:
@@ -851,11 +1065,12 @@ class CompanionOrchestrator:
             raw_message=raw_message,
         )
 
-        async for token in llm_bridge.stream_llm_with_messages(
+        raw_token_stream = llm_bridge.stream_llm_with_messages(
             model=self._config.llm_provider,
             messages=messages,
             temperature=0.7,
-        ):
+        )
+        async for token in filter_action_tokens(raw_token_stream):
             yield token
 
     async def _call_conversation(
