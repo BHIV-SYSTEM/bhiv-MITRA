@@ -53,7 +53,7 @@ class CompanionConfig:
     enabled_capabilities: List[str] = field(default_factory=lambda: [
         "email", "calendar", "whatsapp", "reminder",
         "task", "notes", "contacts", "notification",
-        "browser", "document", "uniguru", "samruddhi", "samachar"
+        "browser", "document", "uniguru", "samruddhi", "samachar", "setu"
     ])
     safety_gate_enabled: bool = True  # always True in production
     session_ttl_hours: int = 24       # session expires after this many hours
@@ -69,7 +69,7 @@ class CompanionConfig:
             enabled_capabilities=enabled.split(",") if enabled else [
                 "email", "calendar", "whatsapp", "reminder",
                 "task", "notes", "contacts", "notification",
-                "browser", "document", "uniguru", "samruddhi", "samachar"
+                "browser", "document", "uniguru", "samruddhi", "samachar", "setu"
             ],
         )
 

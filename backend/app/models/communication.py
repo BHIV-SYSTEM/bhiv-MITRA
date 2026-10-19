@@ -60,35 +60,8 @@ PendingActionStatus = Literal[
     "FAILED",
 ]
 
-CommunicationErrorCode = Literal[
-    "AUTH_REQUIRED",
-    "ACCOUNT_NOT_CONNECTED",
-    "ACCOUNT_NOT_AUTHORIZED",
-    "CONFIRMATION_REQUIRED",
-    "INVALID_RECIPIENT",
-    "PROVIDER_UNAVAILABLE",
-    "RATE_LIMITED",
-    "DELIVERY_FAILED",
-    "PROVIDER_REJECTED",
-    "CONFIGURATION_REQUIRED",
-    "WHATSAPP_BUSINESS_REQUIRED",
-    "ACTION_NOT_FOUND",
-    "ACTION_EXPIRED",
-    "ACTION_ALREADY_CONFIRMED",
-    "ACTION_ALREADY_EXECUTED",
-    "ACTION_CANCELLED",
-    "INTEGRITY_CHECK_FAILED",
-    "ACCOUNT_DISCONNECTED",
-    "CONCURRENT_EXECUTION_BLOCKED",
-    "GMAIL_REAUTH_REQUIRED",
-    "GMAIL_PERMISSION_DENIED",
-    "GMAIL_NOT_FOUND",
-    "GMAIL_RATE_LIMITED",
-    "GMAIL_INVALID_QUERY",
-    "GMAIL_ATTACHMENT_TOO_LARGE",
-    "GMAIL_INVALID_ATTACHMENT",
-    "GMAIL_PROVIDER_ERROR",
-]
+CommunicationErrorCode = str
+
 
 # Sensitive keys that must NEVER enter canonical contract or result
 FORBIDDEN_CREDENTIAL_KEYS = {
@@ -224,12 +197,14 @@ class CommunicationConfirmationPayload(BaseModel):
     pending_action_id: Optional[str] = None
     sender_account: Optional[str] = None
     recipient: Optional[str] = None
+    recipient_name: Optional[str] = None
     subject: Optional[str] = None
     content: Optional[str] = None
     action: Literal["SEND_MESSAGE"] = "SEND_MESSAGE"
     idempotency_key: Optional[str] = None
     expires_at: Optional[str] = None
     requires_confirmation: bool = True
+    metadata: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -238,12 +213,14 @@ class CommunicationConfirmationPayload(BaseModel):
             "pending_action_id": self.pending_action_id,
             "sender_account": self.sender_account,
             "recipient": self.recipient,
+            "recipient_name": self.recipient_name,
             "subject": self.subject,
             "content": self.content,
             "action": self.action,
             "idempotency_key": self.idempotency_key,
             "expires_at": self.expires_at,
             "requires_confirmation": self.requires_confirmation,
+            "metadata": self.metadata or {},
         }
 
 

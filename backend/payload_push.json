@@ -1,0 +1,7 @@
+{
+  "user_id": "test-user-1",
+  "context_type": "telemetry",
+  "source": "uniguru-metrics",
+  "payload": {"cpu": "85%", "memory": "2GB"},
+  "trace_id": "req-1"
+}

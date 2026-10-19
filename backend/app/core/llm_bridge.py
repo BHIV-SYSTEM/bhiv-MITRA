@@ -31,22 +31,18 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# Bounded Enterprise LRU Cache configured via Environment Variables
-MAX_CACHE_SIZE = int(os.getenv("LLM_CACHE_SIZE", "500"))
-CACHE_TTL_SECONDS = int(os.getenv("LLM_CACHE_TTL", "3600"))  # 1 hour default
+# Bounded Enterprise LRU Cache to prevent memory leaks
+MAX_CACHE_SIZE = 500
+CACHE_TTL_SECONDS = 3600  # 1 hour
 
 
 class LLMBridge:
     def __init__(self):
-        openai_key = (os.getenv("OPENAI_API_KEY") or "").strip()
-        groq_key = (os.getenv("GROQ_API_KEY") or "").strip()
+        openai_key = os.getenv("OPENAI_API_KEY")
+        groq_key = os.getenv("GROQ_API_KEY")
         self.groq_model = (
-            os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
-            or "llama-3.3-70b-versatile"
-        )
-        self.openai_model = (
-            os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
-            or "gpt-4o-mini"
+            os.getenv("GROQ_MODEL", "llama-3.1-8b-instant").strip()
+            or "llama-3.1-8b-instant"
         )
         self.openai_client = AsyncOpenAI(api_key=openai_key) if AsyncOpenAI and openai_key else None
         self.groq_client = AsyncGroq(api_key=groq_key) if AsyncGroq and groq_key else None
@@ -112,9 +108,9 @@ class LLMBridge:
         text = re.sub(r"INSTRUCTION TO LLM:.*", "", text, flags=re.DOTALL).strip()
         
         # 2. Clean raw web search headers if present
-        if text.startswith("Live Web Search Context:") or text.startswith("Web Search Intelligence:"):
+        if text.startswith("Live Web Search Context:") or text.startswith("Web Search Intelligence:") or text.startswith("Web Information Intelligence Summary:"):
             parts = re.split(r"\n\s*•\s+.*", text)
-            synth = [p.strip() for p in parts if p.strip() and not p.strip().startswith("Live Web Search Context:") and not p.strip().startswith("Web Search Intelligence:")]
+            synth = [p.strip() for p in parts if p.strip() and not p.strip().startswith("Live Web Search Context:") and not p.strip().startswith("Web Search Intelligence:") and not p.strip().startswith("Web Information Intelligence Summary:")]
             if synth:
                 text = "\n\n".join(synth)
 
@@ -132,7 +128,6 @@ class LLMBridge:
         text = re.sub(r"\n{3,}", "\n\n", text).strip()
 
         return text
-
     # ── full chat-history call (companion primary path) ───────────
     async def call_llm_with_messages(
         self,
@@ -154,7 +149,7 @@ class LLMBridge:
                 return cached
 
         output = await self._dispatch(model, messages, temperature, max_tokens)
-        output = self._sanitize_llm_output(output)
+        output = self._sanitize_llm_output(output) if hasattr(self, "_sanitize_llm_output") else output
         if output and use_cache and cache_key:
             self._cache_set(cache_key, output)
         return output
@@ -213,73 +208,46 @@ class LLMBridge:
         for i in range(0, len(full_text), chunk_size):
             yield full_text[i : i + chunk_size]
             await asyncio.sleep(0.008)
-
     async def _dispatch(self, model: str, messages: list, temperature: float, max_tokens: int) -> str:
         try:
-            if model in ("local", "ollama", "vllm"):
-                return await asyncio.wait_for(self._call_local_llm(messages, temperature, max_tokens), timeout=8.0)
-            if model in ("groq", "llama") or model.startswith("llama-") or model.startswith("groq/"):
-                return await asyncio.wait_for(self._call_groq(messages, temperature, max_tokens, requested_model=model), timeout=4.0)
+            if model in ("groq", "llama"):
+                return await asyncio.wait_for(self._call_groq(messages, temperature, max_tokens), timeout=12.0)
             if model in ("chatgpt", "openai", "gpt"):
-                return await asyncio.wait_for(self._call_openai(messages, temperature, max_tokens), timeout=4.0)
+                return await asyncio.wait_for(self._call_openai(messages, temperature, max_tokens), timeout=12.0)
             if model == "gemini":
-                return await asyncio.wait_for(self._call_gemini(messages, temperature), timeout=4.0)
+                return await asyncio.wait_for(self._call_gemini(messages, temperature), timeout=12.0)
             if model == "mistral":
-                return await asyncio.wait_for(self._call_mistral(messages, temperature), timeout=4.0)
+                return await asyncio.wait_for(self._call_mistral(messages, temperature), timeout=12.0)
             if model == "uniguru":
-                return await asyncio.wait_for(self._call_uniguru(messages), timeout=5.0)
+                return await asyncio.wait_for(self._call_uniguru(messages), timeout=15.0)
             raise ValueError(f"Unsupported model: {model}")
         except Exception as exc:
-            logger.warning("LLM dispatch failed model=%s: %s — trying fast fallback chain", model, exc)
+            logger.warning("LLM dispatch failed model=%s: %s — trying fallback chain", model, exc)
             return await self._fallback_chain(messages, temperature, max_tokens, failed=model)
 
     async def _fallback_chain(
         self, messages: list, temperature: float, max_tokens: int, failed: str
     ) -> str:
-        # High-Speed Provider Priority: Local/Ollama -> Groq -> UniGuru -> OpenAI -> Gemini
-        providers = ["local", "groq", "uniguru", "openai", "gemini"]
-        for provider in providers:
+        # UniGuru is the canonical intelligence backend — try it FIRST.
+        for provider in ("uniguru", "groq", "openai", "gemini"):
             if provider == failed:
                 continue
             try:
-                if provider == "local" and os.getenv("LOCAL_LLM_URL"):
-                    return await asyncio.wait_for(self._call_local_llm(messages, temperature, max_tokens), timeout=6.0)
-                if provider == "groq" and self.groq_client:
-                    return await asyncio.wait_for(self._call_groq(messages, temperature, max_tokens), timeout=3.5)
                 if provider == "uniguru":
-                    return await asyncio.wait_for(self._call_uniguru(messages), timeout=4.0)
-                if provider == "openai" and self.openai_client:
-                    return await asyncio.wait_for(self._call_openai(messages, temperature, max_tokens), timeout=3.5)
-                if provider == "gemini" and genai and self.google_key:
-                    return await asyncio.wait_for(self._call_gemini(messages, temperature), timeout=3.5)
+                    return await asyncio.wait_for(self._call_uniguru(messages), timeout=12.0)
+                if provider == "groq":
+                    return await asyncio.wait_for(self._call_groq(messages, temperature, max_tokens), timeout=12.0)
+                if provider == "openai":
+                    return await asyncio.wait_for(self._call_openai(messages, temperature, max_tokens), timeout=12.0)
+                if provider == "gemini":
+                    return await asyncio.wait_for(self._call_gemini(messages, temperature), timeout=12.0)
             except Exception as exc:
                 logger.warning("Fallback provider=%s failed: %s", provider, exc)
-        # Final rule-based fallback — instant response (< 1ms)
+        # Final rule-based fallback — always gives a useful reply
         return await self._rule_based_response(messages)
 
     # ── providers ─────────────────────────────────────────────────
-    async def _call_local_llm(self, messages: list, temperature: float, max_tokens: int) -> str:
-        """Call self-hosted OpenAI-compatible local LLM endpoint (Ollama / vLLM)."""
-        base_url = os.getenv("LOCAL_LLM_URL", "http://localhost:11434/v1").rstrip("/")
-        model_name = os.getenv("LOCAL_LLM_MODEL", "llama3.1").strip()
-        client = self._get_http_client()
-        url = f"{base_url}/chat/completions"
-        resp = await client.post(
-            url,
-            json={
-                "model": model_name,
-                "messages": messages,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-            },
-            headers={"Content-Type": "application/json"}
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            return data["choices"][0]["message"]["content"] or ""
-        raise ValueError(f"Local LLM HTTP {resp.status_code}: {resp.text[:150]}")
-
-    async def _call_groq(self, messages: list, temperature: float, max_tokens: int, requested_model: Optional[str] = None) -> str:
+    async def _call_groq(self, messages: list, temperature: float, max_tokens: int, requested_model: str = None) -> str:
         if not self.groq_client:
             groq_key = (os.getenv("GROQ_API_KEY") or "").strip()
             if groq_key and AsyncGroq:
@@ -302,14 +270,7 @@ class LLMBridge:
                     max_tokens=max_tokens,
                 )
                 raw_text = resp.choices[0].message.content or ""
-                clean_text = re.sub(r"^Based on live information for your query:\s*", "", raw_text, flags=re.IGNORECASE).strip()
-                clean_text = re.sub(r"INSTRUCTION TO LLM:.*", "", clean_text, flags=re.DOTALL).strip()
-                if clean_text.startswith("Live Web Search Context:"):
-                    parts = re.split(r"\n\s*•\s+.*", clean_text)
-                    synth = [p.strip() for p in parts if p.strip() and not p.strip().startswith("Live Web Search Context:")]
-                    if synth:
-                        clean_text = "\n\n".join(synth)
-                return clean_text
+                return self._sanitize_llm_output(raw_text)
             except Exception as exc:
                 last_exc = exc
                 err_str = str(exc)
@@ -330,7 +291,7 @@ class LLMBridge:
         if not self.openai_client:
             raise ValueError("OPENAI_API_KEY not configured")
         resp = await self.openai_client.chat.completions.create(
-            model=self.openai_model,
+            model="gpt-3.5-turbo",
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
@@ -345,26 +306,12 @@ class LLMBridge:
             for m in messages
             if m["role"] != "system"
         )
-        configured_model = os.getenv("GEMINI_MODEL", "gemini-flash-latest").strip()
-        gemini_candidates = [configured_model, "gemini-flash-latest", "gemini-1.5-flash", "gemini-1.5-pro"]
-        gemini_candidates = list(dict.fromkeys(gemini_candidates))
-
-        last_exc = None
-        for gm in gemini_candidates:
-            try:
-                gem = genai.GenerativeModel(gm)
-                result = await asyncio.to_thread(
-                    gem.generate_content, prompt,
-                    generation_config={"temperature": temperature},
-                )
-                return result.text or ""
-            except Exception as exc:
-                last_exc = exc
-                logger.info("Gemini model '%s' returned error: %s — trying next candidate", gm, exc)
-                continue
-        if last_exc:
-            raise last_exc
-        raise ValueError("Gemini call failed on all candidate models")
+        gem = genai.GenerativeModel("gemini-pro")
+        result = await asyncio.to_thread(
+            gem.generate_content, prompt,
+            generation_config={"temperature": temperature},
+        )
+        return result.text or ""
 
     async def _call_mistral(self, messages: list, temperature: float) -> str:
         if not self.mistral_client:
@@ -470,20 +417,20 @@ class LLMBridge:
             now = datetime.now(ist_tz)
             return f"It's currently **{now.strftime('%A, %d %B %Y')}** and the time is **{now.strftime('%I:%M %p IST')}**."
 
-        # Help / Capabilities (handles typos like 'what can yo do', 'what can u do')
-        if re.search(r"\b(help|what can (you|yo|u) do|capabilities|features|who are (you|yo|u))\b", user_msg):
-            try:
-                from app.companion.capability_registry import capability_registry
-                active_caps = capability_registry.get_capabilities()
-                cap_bullets = "\n".join(f"• **{cap.title()}** — Active integrated capability" for cap in active_caps)
-                return f"I am Mitra, your enterprise AI companion. Here are my active capabilities:\n\n{cap_bullets}\n\nWhat would you like to do?"
-            except Exception:
-                return (
-                    "I can help you with your Tasks, Calendar, Reminders, Knowledge, and Enterprise Workflows.\n\n"
-                    "What would you like to do?"
-                )
+        # Help
+        if re.search(r"\b(help|what can you do|capabilities|features)\b", user_msg):
+            return (
+                "I can help you with:\n\n"
+                "• 📧 **Email** — draft, send, and read emails\n"
+                "• 📅 **Calendar** — schedule and manage events\n"
+                "• ✅ **Tasks** — create and track to-dos\n"
+                "• 🔔 **Reminders** — set smart reminders\n"
+                "• 📚 **Knowledge** — answer questions and explain concepts\n"
+                "• 💬 **WhatsApp** — send messages to contacts\n\n"
+                "What would you like to do?"
+            )
 
-        # Smart factual web search fallback for general knowledge queries (e.g. solar system, science, facts)
+        # Live web search fallback for factual queries (e.g. radius of earth, news, facts)
         try:
             from app.tools.search_tool import SearchTool
             search_res = await SearchTool().run(user_msg)
@@ -494,8 +441,8 @@ class LLMBridge:
 
         # Generic thoughtful reply
         return (
-            "I'm listening and here to help! "
-            "Could you rephrase your question or ask about tasks, calendar, reminders, news, or weather?"
+            "I'm listening and working on fetching the best information for you. "
+            "Could you rephrase your question or ask about tasks, calendar, reminders, or market trends?"
         )
 
     def _synthesize_search_into_markdown(self, query: str, raw_search_text: str) -> str:

@@ -1,6 +1,6 @@
 import { NotificationBadge } from './NotificationBadge.js';
 import { eventBus } from '../services/eventBus.js';
-import { renderAvatarElement } from '../services/avatarHelper.js';
+import { renderAvatarElement, getActiveMitraAvatar } from '../services/avatarHelper.js';
 import { contextStore } from '../services/contextStore.js';
 
 export class MITRAButton {
@@ -60,14 +60,12 @@ export class MITRAButton {
 
     // Listen for avatar updates
     eventBus.on('avatar.changed', (data) => {
-      this.updateAvatar(data.avatar);
+      this.updateAvatar(getActiveMitraAvatar(contextStore));
     });
 
-    // Initial avatar rendering
-    const initialAvatar = contextStore.getAvatar();
-    if (initialAvatar) {
-      this.updateAvatar(initialAvatar);
-    }
+    // Initial avatar rendering (fallback to canonical Mitra avatar)
+    const initialAvatar = getActiveMitraAvatar(contextStore);
+    this.updateAvatar(initialAvatar);
   }
 
   updateAvatar(avatarUrl) {
@@ -77,14 +75,11 @@ export class MITRAButton {
     }
 
     const svg = this.element.querySelector('svg');
-    if (avatarUrl) {
-      if (svg) svg.style.display = 'none';
-      const avatarEl = renderAvatarElement(avatarUrl);
-      if (avatarEl) {
-        this.element.appendChild(avatarEl);
-      }
-    } else {
-      if (svg) svg.style.display = 'block';
+    if (svg) svg.style.display = 'none';
+
+    const avatarEl = renderAvatarElement(avatarUrl || 'default');
+    if (avatarEl) {
+      this.element.appendChild(avatarEl);
     }
   }
 
@@ -96,11 +91,19 @@ export class MITRAButton {
     }
   }
 
+  setHiddenPermanently(hidden) {
+    this.hiddenPermanently = Boolean(hidden);
+    if (this.hiddenPermanently) {
+      this.hide();
+    }
+  }
+
   hide() {
     this.element.style.display = 'none';
   }
 
   show() {
+    if (this.hiddenPermanently) return;
     this.element.style.display = 'flex';
   }
 }

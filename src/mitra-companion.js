@@ -1,10 +1,12 @@
-import { runtimeService } from './services/RuntimeService.js';
-import { eventBus } from './services/eventBus.js';
-import { MITRAButton } from './components/MITRAButton.js';
-import { MITRAWindow } from './components/MITRAWindow.js';
-import { NotificationCenter } from './components/NotificationCenter.js';
-import { DockController } from './components/DockController.js';
-import { contextStore } from './services/contextStore.js';
+import { runtimeService } from './services/RuntimeService.js?v=v25';
+import { eventBus } from './services/eventBus.js?v=v25';
+import { MITRAButton } from './components/MITRAButton.js?v=v25';
+import { MITRAWindow } from './components/MITRAWindow.js?v=v25';
+import { NotificationCenter } from './components/NotificationCenter.js?v=v25';
+import { DockController } from './components/DockController.js?v=v25';
+import { contextStore } from './services/contextStore.js?v=v25';
+import { AvatarModal } from './components/AvatarModal.js?v=v25';
+import { initActiveMitraAvatar } from './services/avatarHelper.js?v=v25';
 
 class MitraCompanion extends HTMLElement {
   constructor() {
@@ -12,11 +14,25 @@ class MitraCompanion extends HTMLElement {
     this.attachShadow({ mode: 'open' });
   }
 
-  async connectedCallback() {
+  connectedCallback() {
     try {
       window.__mitra_event_bus = eventBus;
+      // Synchronously render UI immediately so the floating orb and chatbot window always mount without delay
       this.render();
-      await runtimeService.connectAll();
+
+      // Load active avatar asynchronously from storage without blocking DOM rendering
+      initActiveMitraAvatar(contextStore).then((activeAvatar) => {
+        if (activeAvatar && typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('mitra:avatar-changed', { detail: { avatar: activeAvatar } }));
+        }
+      }).catch((err) => {
+        console.warn('[MITRA] Avatar init warning:', err);
+      });
+
+      // Connect runtime services in the background
+      runtimeService.connectAll().catch((err) => {
+        console.warn('[MITRA] Runtime connect warning:', err);
+      });
     } catch (err) {
       console.warn('[MITRA Error Boundary] Caught companion lifecycle error:', err);
     }
@@ -49,27 +65,40 @@ class MitraCompanion extends HTMLElement {
       shell.style.position = 'fixed';
     };
 
-    // Load last position if floating
-    const lastPos = contextStore.getPosition();
+    // By default in floating mode, always anchor cleanly to bottom-right corner (bottom: 24px; right: 24px)
     if (contextStore.getDockMode() === 'floating') {
-      if (lastPos && lastPos.left != null && lastPos.top != null) {
-        const parsedLeft = parseFloat(lastPos.left);
-        const parsedTop = parseFloat(lastPos.top);
-        if (!isNaN(parsedLeft) && !isNaN(parsedTop) && parsedTop > 60 && parsedLeft < (window.innerWidth - 60)) {
-          const safeLeft = Math.min(Math.max(20, parsedLeft), Math.max(20, window.innerWidth - 80));
-          const safeTop = Math.min(Math.max(60, parsedTop), Math.max(60, window.innerHeight - 80));
-          shell.style.removeProperty('inset');
-          shell.style.left = `${safeLeft}px`;
-          shell.style.top = `${safeTop}px`;
-          shell.style.bottom = 'auto';
-          shell.style.right = 'auto';
-        } else {
-          setFloatingDefaultPosition();
-        }
-      } else {
-        setFloatingDefaultPosition();
+      setFloatingDefaultPosition();
+      if (typeof contextStore.setPosition === 'function') {
+        contextStore.setPosition(null);
       }
     }
+
+    // Slide chatbot to the side when notification drawer opens so it does not obstruct notifications
+    let drawerIsOpen = false;
+    const handleDrawerState = (isOpen, width = 380) => {
+      drawerIsOpen = !!isOpen;
+      if (drawerIsOpen) {
+        shell.classList.add('drawer-open');
+        if (contextStore.getDockMode() === 'floating') {
+          shell.style.removeProperty('inset');
+          shell.style.bottom = '24px';
+          shell.style.right = `${width + 24}px`;
+          shell.style.left = 'auto';
+          shell.style.top = 'auto';
+        }
+      } else {
+        shell.classList.remove('drawer-open');
+        if (contextStore.getDockMode() === 'floating') {
+          setFloatingDefaultPosition();
+        }
+      }
+    };
+
+    eventBus.on('drawer.opened', (data) => handleDrawerState(true, data?.width || 380));
+    eventBus.on('drawer.closed', () => handleDrawerState(false));
+    window.addEventListener('mitra:drawer-state-changed', (e) => {
+      handleDrawerState(e.detail?.open, e.detail?.width || 380);
+    });
 
     // Global Notifications
     const notificationCenter = new NotificationCenter(eventBus);
@@ -78,58 +107,127 @@ class MitraCompanion extends HTMLElement {
     // Dock Controller
     const dockController = new DockController(shell);
 
+    const hideFab = this.hasAttribute('hide-fab') || this.getAttribute('hide-fab') === 'true';
+
     // Main Window
     const mitraWindow = new MITRAWindow(runtimeService, eventBus, dockController);
 
+    // Avatar customization modal setup (instantiated BEFORE event wiring to avoid TDZ ReferenceError)
+    const avatarModal = new AvatarModal(eventBus, contextStore);
+    shell.appendChild(avatarModal.element);
+
+    avatarModal.onClose = () => {
+      // When avatar modal closes, keep the chatbot expanded only if it wasn't minimized!
+      if (mitraWindow.state !== 'minimized') {
+        mitraWindow.expand();
+        if (contextStore.setWindowState) contextStore.setWindowState('expanded');
+        window.dispatchEvent(new CustomEvent('mitra:orb-state-changed', { detail: { open: true } }));
+      }
+    };
+
+    eventBus.on('avatar.request_change', () => {
+      mitraWindow.expand();
+      avatarModal.open();
+    });
+
     // FAB
     const mitraButton = new MITRAButton(() => {
+      if (shell.style.left && shell.style.left !== 'auto') {
+        const parsedLeft = parseFloat(shell.style.left);
+        const parsedTop = parseFloat(shell.style.top);
+        if (!isNaN(parsedLeft) && (parsedLeft + 420 > window.innerWidth || parsedLeft < 0)) {
+          shell.style.left = `${Math.max(20, window.innerWidth - 440)}px`;
+        }
+        if (!isNaN(parsedTop) && (parsedTop + 680 > window.innerHeight || parsedTop < 60)) {
+          shell.style.top = `${Math.max(60, window.innerHeight - 700)}px`;
+        }
+      }
       mitraButton.hide();
       mitraWindow.expand();
       if (contextStore.setWindowState) contextStore.setWindowState('expanded');
+      window.dispatchEvent(new CustomEvent('mitra:orb-state-changed', { detail: { open: true } }));
     });
+
+    // Double-click orb to reset to canonical bottom-right corner
+    mitraButton.element.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setFloatingDefaultPosition();
+      contextStore.setPosition(null);
+    });
+
+    if (hideFab) {
+      if (typeof mitraButton.setHiddenPermanently === 'function') {
+        mitraButton.setHiddenPermanently(true);
+      }
+      mitraButton.hide();
+    }
 
     // Wire up events
     mitraWindow.onMinimize = () => {
+      avatarModal.close(false);
       if (contextStore.setWindowState) contextStore.setWindowState('minimized');
-      setTimeout(() => mitraButton.show(), 300);
+      if (!hideFab) {
+        setTimeout(() => mitraButton.show(), 100);
+      } else {
+        mitraButton.hide();
+      }
+      this.style.setProperty('pointer-events', 'none', 'important');
+      window.dispatchEvent(new CustomEvent('mitra:orb-state-changed', { detail: { open: false } }));
     };
 
-    // Restore saved window state across page navigation
-    const savedWindowState = (contextStore.getWindowState && typeof contextStore.getWindowState === 'function') ? contextStore.getWindowState() : 'minimized';
-    if (savedWindowState === 'expanded') {
+    const toggleWindow = () => {
+      const isExpanded =
+        mitraWindow.state === 'expanded' ||
+        mitraWindow.element.classList.contains('expanded') ||
+        mitraWindow.element.classList.contains('active') ||
+        mitraWindow.element.style.display === 'flex';
+
+      if (isExpanded) {
+        avatarModal.close(false);
+        mitraWindow.minimize();
+      } else {
+        if (shell.style.left && shell.style.left !== 'auto') {
+          const parsedLeft = parseFloat(shell.style.left);
+          const parsedTop = parseFloat(shell.style.top);
+          if (!isNaN(parsedLeft) && (parsedLeft + 420 > window.innerWidth || parsedLeft < 0)) {
+            shell.style.left = `${Math.max(20, window.innerWidth - 440)}px`;
+          }
+          if (!isNaN(parsedTop) && (parsedTop + 680 > window.innerHeight || parsedTop < 60)) {
+            shell.style.top = `${Math.max(60, window.innerHeight - 700)}px`;
+          }
+        }
+        mitraButton.hide();
+        mitraWindow.expand();
+        if (contextStore.setWindowState) contextStore.setWindowState('expanded');
+        window.dispatchEvent(new CustomEvent('mitra:orb-state-changed', { detail: { open: true } }));
+      }
+    };
+
+    window.__MITRA_TOGGLE_ORB__ = toggleWindow;
+    window.__MITRA_MINIMIZE__ = () => mitraWindow.minimize();
+    eventBus.on('companion.toggle', toggleWindow);
+    window.addEventListener('mitra:toggle-orb', toggleWindow);
+    window.addEventListener('mitra:minimize-orb', () => mitraWindow.minimize());
+
+    // Window initial state:
+    // Always start cleanly minimized as the floating orb so the chatbot screen never intrudes on page load
+    if (hideFab) {
+      mitraWindow.minimize();
       mitraButton.hide();
-      mitraWindow.expand();
+      if (contextStore.setWindowState) contextStore.setWindowState('minimized');
+      window.dispatchEvent(new CustomEvent('mitra:orb-state-changed', { detail: { open: false } }));
     } else {
       mitraWindow.minimize();
       mitraButton.show();
+      if (contextStore.setWindowState) contextStore.setWindowState('minimized');
+      window.dispatchEvent(new CustomEvent('mitra:orb-state-changed', { detail: { open: false } }));
     }
 
     eventBus.on('runtime.thinking', () => mitraButton.setThinking(true));
     eventBus.on('runtime.idle', () => mitraButton.setThinking(false));
     eventBus.on('capability.finished', () => mitraButton.setThinking(false));
     eventBus.on('notification.received', () => mitraButton.setThinking(false));
-
-    // Hidden avatar file input setup
-    const fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.accept = 'image/png, image/jpeg, image/gif, image/webp, video/mp4, video/webm';
-    fileInput.style.display = 'none';
-    shell.appendChild(fileInput);
-
-    eventBus.on('avatar.request_change', () => {
-      fileInput.click();
-    });
-
-    fileInput.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = (evt) => {
-          contextStore.setAvatar(evt.target.result);
-        };
-        reader.readAsDataURL(file);
-      }
-    });
 
     // Drag-and-drop tracking
     let isDragging = false;
@@ -140,7 +238,7 @@ class MitraCompanion extends HTMLElement {
 
     const startDrag = (e) => {
       if (contextStore.getDockMode() !== 'floating') return;
-      if (e.target.closest('button') || e.target.closest('input') || e.target.closest('select')) {
+      if (e.target.closest('button') || e.target.closest('input') || e.target.closest('select') || e.target.closest('.mitra-header-avatar')) {
         return;
       }
 

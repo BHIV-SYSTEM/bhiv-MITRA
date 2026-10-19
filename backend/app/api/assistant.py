@@ -26,6 +26,8 @@ class AssistantContext(BaseModel):
     platform: str = "web"
     device: str = "desktop"
     session_id: Optional[str] = None
+    tenant_id: Optional[str] = "default_tenant"
+    org_id: Optional[str] = "bhiv_default"
     voice_input: bool = False
     preferred_language: Optional[str] = "auto"
     detected_language: Optional[str] = None

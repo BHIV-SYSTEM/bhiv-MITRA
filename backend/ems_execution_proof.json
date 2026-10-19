@@ -12,13 +12,13 @@
     "action_type": "ems",
     "summary": "Task created: Fix bug #42",
     "task": {
-      "id": "task_a7a21603",
+      "id": "task_89a65f7f",
       "title": "Fix bug #42",
       "status": "pending",
       "priority": "high"
     },
     "trace_id": "test_trace_004",
-    "timestamp": "2026-09-03T11:02:02.805400",
+    "timestamp": "2026-08-21T06:33:38.068951",
     "service": "execution_service"
   }
 }

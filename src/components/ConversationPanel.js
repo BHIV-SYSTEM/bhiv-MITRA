@@ -1,4 +1,5 @@
 import { controlPlane, getApiBaseUrl } from '../services/controlPlane.js';
+import { MITRA_CANONICAL_AVATAR_DATA_URL, getActiveMitraAvatar, renderAvatarElement } from '../services/avatarHelper.js';
 
 export class ConversationPanel {
   constructor(eventBus, contextStore) {
@@ -35,7 +36,7 @@ export class ConversationPanel {
 
       // Real-time listener: when capability finishes execution successfully
       eventBus.on('capability.completed', (data) => {
-        this.addCapabilityCard(data.capability, data.result, data.duration, data.data || {});
+        this.addCapabilityCard(data.capability, data.result, data.duration, data.data || {}, true);
       });
 
       // Real-time listener: when capability execution fails or errors out
@@ -47,11 +48,72 @@ export class ConversationPanel {
       eventBus.on('context.cleared', () => {
         this.renderHistory();
       });
+
+      // Dynamic avatar update listener
+      eventBus.on('avatar.changed', () => {
+        const newAvatar = getActiveMitraAvatar(this.contextStore);
+        const heroBadge = this.element.querySelector('.mitra-hero-badge-container');
+        if (heroBadge) {
+          const oldMedia = heroBadge.querySelector('.mitra-hero-badge-img');
+          if (oldMedia) oldMedia.remove();
+          const newMedia = renderAvatarElement(newAvatar, 'mitra-hero-badge-img');
+          heroBadge.appendChild(newMedia);
+        }
+        const thumbContainers = this.element.querySelectorAll('.chat-msg-row.mitra');
+        thumbContainers.forEach(row => {
+          const oldThumb = row.querySelector('.chat-avatar-thumb');
+          if (oldThumb) {
+            const newThumb = renderAvatarElement(newAvatar, 'chat-avatar-thumb');
+            row.replaceChild(newThumb, oldThumb);
+          }
+        });
+      });
     }
+  }
+
+  renderHeroBanner() {
+    const existing = this.element.querySelector('.mitra-hero-banner');
+    if (existing) return;
+
+    const currentAvatar = getActiveMitraAvatar(this.contextStore);
+
+    const hero = document.createElement('div');
+    hero.className = 'mitra-hero-banner';
+    
+    const badgeContainer = document.createElement('div');
+    badgeContainer.className = 'mitra-hero-badge-container';
+    badgeContainer.style.cursor = 'pointer';
+    badgeContainer.setAttribute('title', 'Click to change avatar');
+    badgeContainer.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this.eventBus) this.eventBus.emit('avatar.request_change');
+    });
+    
+    const glow = document.createElement('div');
+    glow.className = 'mitra-hero-badge-glow';
+    badgeContainer.appendChild(glow);
+
+    const avatarEl = renderAvatarElement(currentAvatar, 'mitra-hero-badge-img');
+    badgeContainer.appendChild(avatarEl);
+
+    hero.appendChild(badgeContainer);
+
+    const title = document.createElement('div');
+    title.className = 'mitra-hero-title';
+    title.textContent = 'MITRA AI COMPANION';
+    hero.appendChild(title);
+
+    const sub = document.createElement('div');
+    sub.className = 'mitra-hero-sub';
+    sub.textContent = 'Universal Intelligence • Connected & Ready';
+    hero.appendChild(sub);
+
+    this.element.prepend(hero);
   }
 
   renderHistory() {
     this.element.innerHTML = '';
+    this.renderHeroBanner();
     const history = this.contextStore ? this.contextStore.getHistory() : [];
     if (history && history.length > 0) {
       history.forEach(msg => {
@@ -59,7 +121,7 @@ export class ConversationPanel {
           this.addUserMessage(msg.text, new Date(msg.timestamp));
         } else if (msg.role === 'mitra') {
           if (msg.isCapability) {
-            this.addCapabilityCard(msg.capabilityName, msg.result, msg.duration, msg.data);
+            this.addCapabilityCard(msg.capabilityName, msg.result, msg.duration, msg.data, false);
           } else {
             this.addMitraMessage(msg.text, new Date(msg.timestamp), msg.intent, msg.suggestedActions, msg.capabilityResult);
           }
@@ -71,7 +133,7 @@ export class ConversationPanel {
   }
 
   async fetchDynamicGreeting() {
-    const defaultGreeting = "Hello. I am MITRA, your Universal Companion across the BHIV ecosystem. How can I assist you today?";
+    const defaultGreeting = "Hello! I'm Mitra, your friendly assistant. How can I help you today?";
     try {
       const userId = this.contextStore ? this.contextStore.getUserId() : null;
       if (!userId) {
@@ -96,14 +158,32 @@ export class ConversationPanel {
   }
 
   addUserMessage(text, date = new Date()) {
+    const row = document.createElement('div');
+    row.className = 'chat-msg-row user';
+
     const bubble = document.createElement('div');
     bubble.className = 'chat-bubble user';
-    bubble.innerHTML = `<div style="overflow-wrap: break-word; word-break: break-word; box-sizing: border-box;">${this.escapeHtml(text)}</div><div class="chat-timestamp">${date.toLocaleTimeString()}</div>`;
-    this.element.appendChild(bubble);
+    const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    bubble.innerHTML = `<div style="overflow-wrap: break-word; word-break: break-word; box-sizing: border-box;">${this.escapeHtml(text)}</div><div class="chat-timestamp">${timeStr}</div>`;
+    
+    row.appendChild(bubble);
+    this.element.appendChild(row);
     this.scrollToBottom();
   }
 
   addMitraMessage(text, date = new Date(), intent = null, suggestedActions = [], capabilityResult = null) {
+    const row = document.createElement('div');
+    row.className = 'chat-msg-row mitra';
+
+    const currentAvatar = getActiveMitraAvatar(this.contextStore);
+    const avatarMedia = renderAvatarElement(currentAvatar, 'chat-avatar-thumb');
+    avatarMedia.style.cursor = 'pointer';
+    avatarMedia.setAttribute('title', 'Click to change avatar');
+    avatarMedia.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this.eventBus) this.eventBus.emit('avatar.request_change');
+    });
+
     const bubble = document.createElement('div');
     bubble.className = 'chat-bubble mitra';
     
@@ -113,34 +193,33 @@ export class ConversationPanel {
     }
 
     let html = `
-      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
-        <div style="white-space: pre-wrap; flex:1; overflow-wrap: break-word; word-break: break-word; box-sizing: border-box; min-width: 0;">${this.formatMarkdown(text)}</div>
-        <button class="mitra-speaker-btn" title="Listen to AI voice" style="background:none; border:none; color:rgba(255,255,255,0.6); cursor:pointer; padding:2px; font-size:14px; transition:0.2s; flex-shrink:0;">🔊</button>
+      <div class="chat-text-row">
+        <div class="chat-text-body">${this.formatMarkdown(text)}</div>
+        <button class="mitra-speaker-btn" title="Listen to AI voice">🔊</button>
       </div>
     `;
     
     // Add Intent badge if present
     if (intent && intent !== 'general') {
       if (intent === 'summarize') {
-        html += `<div style="margin-top:8px; font-size:10px; background:rgba(0,230,118,0.15); border:1px solid rgba(0,230,118,0.35); color:#00e676; padding:2px 8px; border-radius:10px; display:inline-flex; align-items:center; gap:4px;">📄 AI Summary</div>`;
+        html += `<div style="margin-top:6px; font-size:10px; background:rgba(0,230,118,0.15); border:1px solid rgba(0,230,118,0.35); color:#00e676; padding:2px 8px; border-radius:10px; display:inline-flex; align-items:center; gap:4px; width:fit-content;">📄 AI Summary</div>`;
       } else if (intent === 'summarize_prompt') {
-        html += `<div style="margin-top:8px; font-size:10px; background:rgba(255,183,0,0.15); border:1px solid rgba(255,183,0,0.35); color:#ffb700; padding:2px 8px; border-radius:10px; display:inline-flex; align-items:center; gap:4px;">💡 Input required</div>`;
+        html += `<div style="margin-top:6px; font-size:10px; background:rgba(255,183,0,0.15); border:1px solid rgba(255,183,0,0.35); color:#ffb700; padding:2px 8px; border-radius:10px; display:inline-flex; align-items:center; gap:4px; width:fit-content;">💡 Input required</div>`;
       } else if (intent !== 'reminder_alert') {
-        html += `<div style="margin-top:8px; font-size:10px; opacity:0.85; background:rgba(108,92,231,0.25); border:1px solid rgba(108,92,231,0.4); padding:2px 8px; border-radius:10px; display:inline-flex; align-items:center; gap:4px;">⚡ Intent: ${this.escapeHtml(intent)}</div>`;
+        html += `<div style="margin-top:6px; font-size:10px; opacity:0.85; background:rgba(108,92,231,0.25); border:1px solid rgba(108,92,231,0.4); padding:2px 8px; border-radius:10px; display:inline-flex; align-items:center; gap:4px; width:fit-content;">⚡ Intent: ${this.escapeHtml(intent)}</div>`;
       }
     }
 
-
-    // Capability results are now natively emitted as 'capability.completed' in controlPlane.js
-    // which automatically triggers the beautiful 'addCapabilityCard' widget renderer instead of a plain text box here.    // Render Suggested Action chips if present
+    // Render Suggested Action chips if present
     if (suggestedActions && suggestedActions.length > 0) {
       const actionsHtml = suggestedActions.map(action => 
         `<button class="mitra-action-chip" style="margin:4px 6px 0 0; background:linear-gradient(135deg, rgba(108,92,231,0.3), rgba(0,230,118,0.2)); border:1px solid rgba(255,255,255,0.25); color:#fff; padding:5px 12px; border-radius:14px; font-size:11px; font-weight:500; cursor:pointer; font-family:inherit; transition:0.2s;">✨ ${this.escapeHtml(action)}</button>`
       ).join('');
-      html += `<div style="margin-top:10px; display:flex; flex-wrap:wrap;">${actionsHtml}</div>`;
+      html += `<div style="margin-top:8px; display:flex; flex-wrap:wrap;">${actionsHtml}</div>`;
     }
 
-    html += `<div class="chat-timestamp">${date.toLocaleTimeString()}</div>`;
+    const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    html += `<div class="chat-timestamp">${timeStr}</div>`;
     bubble.innerHTML = html;
 
     // Attach click listener for Speaker Button (Speech Output)
@@ -178,14 +257,16 @@ export class ConversationPanel {
       });
     }
 
-    this.element.appendChild(bubble);
+    row.appendChild(avatarMedia);
+    row.appendChild(bubble);
+    this.element.appendChild(row);
     this.scrollToBottom();
   }
 
   /**
    * Render rich visual widgets for Calendar, OCR, Tasks, Voice, Health, etc.
    */
-  addCapabilityCard(capability, resultText, duration, backendData = {}) {
+  addCapabilityCard(capability, resultText, duration, backendData = {}, isRealtime = false) {
     const card = document.createElement('div');
     card.className = 'chat-bubble mitra capability-widget';
     card.style.background = 'rgba(21, 21, 29, 0.95)';
@@ -260,6 +341,21 @@ export class ConversationPanel {
         const eventEnd = event.end ? ` → ${new Date(event.end).toLocaleString()}` : '';
         const eventId = event.id ? `<div style="margin-top:4px; font-size:9px; color:rgba(255,255,255,0.3);">ID: ${this.escapeHtml(event.id)}</div>` : '';
 
+        const syncUrls = backendData.sync_urls || {};
+        const googleUrl = syncUrls.google || `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(eventTitle)}`;
+        const outlookUrl = syncUrls.microsoft || `https://outlook.live.com/calendar/0/deeplink/compose?path=/calendar/action/compose&rru=addevent&subject=${encodeURIComponent(eventTitle)}`;
+        const appleUrl = syncUrls.apple || `http://localhost:8001/api/calendar/feed.ics`;
+        const zohoUrl = syncUrls.zoho || `https://calendar.zoho.com/calendar/export/event?title=${encodeURIComponent(eventTitle)}`;
+
+        const providerButtonsHtml = `
+          <div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:6px;">
+            <a href="${googleUrl}" target="_blank" rel="noopener noreferrer" style="background:#4285F4; color:#fff; padding:5px 10px; border-radius:6px; font-size:10px; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">🟢 Sync to Google</a>
+            <a href="${outlookUrl}" target="_blank" rel="noopener noreferrer" style="background:#0078D4; color:#fff; padding:5px 10px; border-radius:6px; font-size:10px; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">🟦 Microsoft Outlook</a>
+            <a href="${appleUrl}" target="_blank" rel="noopener noreferrer" style="background:#A2AAAD; color:#000; padding:5px 10px; border-radius:6px; font-size:10px; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">🍎 Apple iCal</a>
+            <a href="${zohoUrl}" target="_blank" rel="noopener noreferrer" style="background:#C00; color:#fff; padding:5px 10px; border-radius:6px; font-size:10px; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">🟡 Zoho Calendar</a>
+          </div>
+        `;
+
         widgetContent = `
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:6px;">
             <div style="font-weight:700; font-size:13px; color:#6c5ce7; display:flex; align-items:center; gap:6px;">📅 CALENDAR (${currentMonth} ${currentYear})</div>
@@ -280,6 +376,7 @@ export class ConversationPanel {
             <div style="font-weight:600; color:#fff; font-size:13px; margin-bottom:4px;">📌 ${this.escapeHtml(eventTitle)}</div>
             <div style="color:rgba(255,255,255,0.6); font-size:11px;">⏰ ${this.escapeHtml(eventStart)}${this.escapeHtml(eventEnd)}</div>
             ${eventId}
+            ${providerButtonsHtml}
           </div>
         `;
       }
@@ -457,41 +554,240 @@ export class ConversationPanel {
     } else if (capability === 'email') {
       // Real backend email result fields: status, to, subject, message, method
       const emailData = backendData.email || {};
-      const isSuccess = emailData.status === 'success' || backendData.status === 'success';
-      const toAddr = emailData.to || '';
-      const subj = emailData.subject || '';
-      const method = emailData.method || 'backend';
-      const errorMsg = emailData.error || '';
-      const statusColor = isSuccess ? '#00e676' : '#ff453a';
-      const statusLabel = isSuccess ? 'Sent ✓' : 'Not Configured ✗';
+      const isSuccess = emailData.status === 'success' || emailData.status === 'sent' || backendData.status === 'success' || backendData.status === 'sent';
+      const isPendingConfirm = emailData.status === 'confirmation_required' || backendData.status === 'confirmation_required';
+      const pendingActionId = emailData.pending_action_id || backendData.pending_action_id || emailData.action_id || backendData.action_id || '';
+      const confPayload = emailData.confirmation || backendData.confirmation || {};
+      const needsAuth = emailData.status === 'needs_auth' || backendData.status === 'needs_auth' || (!isSuccess && !isPendingConfirm && String(emailData.error || '').toLowerCase().includes('connect'));
+      const toAddr = confPayload.recipient || confPayload.target || emailData.to || backendData.to || '';
+      const subj = confPayload.subject || emailData.subject || backendData.subject || '';
+      const bodyContent = confPayload.content || confPayload.body || emailData.message || backendData.message || '';
+      const method = emailData.method || backendData.method || 'google_oauth';
+      const errorMsg = emailData.error || backendData.error || '';
+      const statusColor = isSuccess ? '#00e676' : (isPendingConfirm ? '#ffb700' : (needsAuth ? '#4285F4' : '#ff453a'));
+      const statusLabel = isSuccess ? 'Sent ✓' : (isPendingConfirm ? 'Approval Required ⏳' : (needsAuth ? 'Auth Required 🔒' : 'Failed ✗'));
+      const cardTitle = isSuccess ? '✉️ GMAIL / EMAIL SENT' : (isPendingConfirm ? '✉️ EMAIL CONFIRMATION REQUIRED' : (needsAuth ? '✉️ GMAIL AUTHENTICATION NEEDED' : '✉️ EMAIL ACTION'));
+      
+      let actionButtons = '';
+      if (isPendingConfirm && pendingActionId) {
+        actionButtons = `
+          <div style="margin-top:10px; display:flex; gap:8px;">
+            <button class="btn-email-confirm-send" data-action-id="${this.escapeHtml(pendingActionId)}" style="background:#00e676; border:none; color:#000; padding:6px 14px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+              ✅ Confirm & Send via Gmail
+            </button>
+            <button class="btn-email-cancel-send" data-action-id="${this.escapeHtml(pendingActionId)}" style="background:rgba(255,59,48,0.2); border:1px solid rgba(255,59,48,0.4); color:#ff453a; padding:6px 10px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer;">
+              Cancel
+            </button>
+          </div>
+        `;
+      } else if (needsAuth || !isSuccess) {
+        actionButtons = `
+          <div style="margin-top:8px;">
+            <button class="btn-connect-google-inline" style="background:#4285F4; border:none; color:#fff; padding:6px 12px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"/></svg>
+              Connect Google Workspace
+            </button>
+          </div>
+        `;
+      }
+
       widgetContent = `
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:6px;">
-          <div style="font-weight:700; font-size:13px; color:${statusColor}; display:flex; align-items:center; gap:6px;">✉️ EMAIL ${isSuccess ? 'SENT' : 'PENDING CONFIGURATION'}</div>
-          <span style="font-size:10px; background:rgba(0,230,118,0.15); color:${statusColor}; padding:2px 6px; border-radius:4px;">${statusLabel}</span>
+          <div style="font-weight:700; font-size:13px; color:${statusColor}; display:flex; align-items:center; gap:6px;">${cardTitle}</div>
+          <span class="email-status-badge" style="font-size:10px; background:rgba(66,133,244,0.15); color:${statusColor}; padding:2px 6px; border-radius:4px; font-weight:600;">${statusLabel}</span>
         </div>
-        <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; font-size:12px;">
+        <div class="email-details-box" style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; font-size:12px;">
           ${toAddr ? `<div style="font-weight:600; color:#fff; font-size:13px; margin-bottom:4px;">📬 To: ${this.escapeHtml(toAddr)}</div>` : ''}
           ${subj ? `<div style="font-size:11px; color:rgba(255,255,255,0.6); margin-bottom:4px;">📝 Subject: ${this.escapeHtml(subj)}</div>` : ''}
-          ${!isSuccess && errorMsg ? `<div style="margin-top:6px; font-size:11px; color:#ffd93d; background:rgba(255,217,61,0.08); border:1px solid rgba(255,217,61,0.2); padding:8px; border-radius:6px;">⚙️ ${this.escapeHtml(errorMsg)}</div>` : ''}
-          ${method && method !== 'none' ? `<div style="margin-top:4px; font-size:9px; color:rgba(255,255,255,0.3);">via: ${this.escapeHtml(method)}</div>` : ''}
+          ${bodyContent ? `<div style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.08); padding:8px; border-radius:6px; font-size:11px; color:#ddd; margin:6px 0; white-space:pre-wrap;">${this.escapeHtml(bodyContent)}</div>` : ''}
+          ${errorMsg ? `<div style="margin-top:6px; font-size:11px; color:${needsAuth ? '#a29bfe' : '#ffd93d'}; background:${needsAuth ? 'rgba(162,155,254,0.1)' : 'rgba(255,217,61,0.08)'}; border:1px solid ${needsAuth ? 'rgba(162,155,254,0.2)' : 'rgba(255,217,61,0.2)'}; padding:8px; border-radius:6px;">⚙️ ${this.escapeHtml(errorMsg)}</div>` : ''}
+          ${actionButtons}
+          ${method && method !== 'none' ? `<div style="margin-top:6px; font-size:9px; color:rgba(255,255,255,0.3);">via: ${this.escapeHtml(method)}</div>` : ''}
         </div>
       `;
 
 
     } else if (capability === 'whatsapp') {
+      const waData = backendData.whatsapp || backendData || {};
+      const confPayload = waData.confirmation || backendData.confirmation || {};
+      const isPendingConfirm = waData.status === 'confirmation_required' || backendData.status === 'confirmation_required' || backendData.status === 'pending' || waData.status === 'pending';
+      const pendingActionId = waData.pending_action_id || backendData.pending_action_id || confPayload.pending_action_id || (waData.data && waData.data.pending_action_id) || '';
+      const isSuccess = waData.status === 'success' || waData.status === 'sent' || backendData.status === 'sent' || waData.status === 'ready';
+      const isError = !isPendingConfirm && !isSuccess && (waData.status === 'failed' || waData.status === 'error' || backendData.status === 'failed');
 
-      // Real backend WhatsApp result: status, error, details (Twilio)
-      const waData = backendData.whatsapp || {};
-      const isSuccess = waData.status === 'success' || backendData.status === 'success';
-      const statusColor = isSuccess ? '#00e676' : '#ff453a';
-      const statusLabel = isSuccess ? 'Sent ✓' : 'Failed ✗';
+      const recipient = waData.recipient_display || confPayload.recipient_name || confPayload.recipient || waData.recipient || waData.to || backendData.to || '';
+      const recipientPhone = waData.recipient_phone || confPayload.recipient || waData.to || backendData.to || '';
+      const senderAccount = waData.sender_account || confPayload.sender_account || 'Meta WhatsApp Business Cloud API';
+      const msgText = waData.exact_message || confPayload.content || (waData.action && waData.action.content) || (waData.message && !waData.message.includes('Explicit confirmation') ? waData.message : '') || (resultText && !resultText.includes('Confirmation required') ? resultText : '') || '';
+      const note = waData.notice || waData.note || backendData.note || '';
+      const errorMsg = waData.error || backendData.error || '';
+      const isPersonal = !isPendingConfirm && (waData.mode === 'personal' || confPayload.mode === 'personal' || waData.provider === 'personal_click_to_chat');
+
+      let statusColor = '#25D366';
+      let statusLabel = 'Dispatched via Meta API ✓';
+      let cardTitle = '💼 BUSINESS WHATSAPP (META CLOUD API)';
+
+      if (isPendingConfirm) {
+        statusColor = '#ffb700';
+        statusLabel = 'Approval Required ⏳';
+        cardTitle = '💬 WHATSAPP CONFIRMATION REQUIRED';
+      } else if (isPersonal) {
+        statusColor = '#25D366';
+        statusLabel = 'Review & Send ✍️';
+        cardTitle = '💬 PERSONAL WHATSAPP (CLICK-TO-CHAT)';
+      } else if (isError) {
+        statusColor = '#ff453a';
+        statusLabel = 'Failed ✗';
+        cardTitle = '⚠️ WHATSAPP ACTION FAILED';
+      }
+
+      let actionButtons = '';
+      if (isPendingConfirm) {
+        actionButtons = `
+          <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="btn-whatsapp-confirm-send" ${pendingActionId ? `data-action-id="${this.escapeHtml(pendingActionId)}"` : ''} style="background:#25D366; border:none; color:#06140E; padding:8px 16px; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 10px rgba(37,211,102,0.3);">
+              <span>✅</span> Confirm &amp; Send via WhatsApp
+            </button>
+            <button class="btn-whatsapp-cancel-send" ${pendingActionId ? `data-action-id="${this.escapeHtml(pendingActionId)}"` : ''} style="background:rgba(255,59,48,0.18); border:1px solid rgba(255,59,48,0.4); color:#ff453a; padding:8px 12px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer;">
+              Cancel
+            </button>
+          </div>
+        `;
+
+      } else if (isPersonal) {
+        const waUrl = waData.url || waData.wa_url || (recipientPhone ? `https://wa.me/${recipientPhone.replace(/[^\d]/g, '')}?text=${encodeURIComponent(msgText)}` : '');
+        if (waUrl) {
+          actionButtons = `
+            <div style="margin-top:8px;">
+              <a href="${waUrl}" target="_blank" rel="noopener noreferrer" style="background:#25D366; color:#06140E; padding:6px 14px; border-radius:6px; font-size:11px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 8px rgba(37,211,102,0.3);">
+                <span>📲</span> Open &amp; Send on WhatsApp
+              </a>
+            </div>
+          `;
+        }
+      }
+
       widgetContent = `
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid rgba(255, 255, 255, 0.1); padding-bottom:6px;">
-          <div style="font-weight:700; font-size:13px; color:${statusColor}; display:flex; align-items:center; gap:6px;">💬 WHATSAPP ${isSuccess ? 'SENT' : 'FAILED'}</div>
-          <span style="font-size:10px; background:rgba(0,230,118,0.15); color:${statusColor}; padding:2px 6px; border-radius:4px;">${statusLabel}</span>
+          <div style="font-weight:700; font-size:13px; color:#25D366; display:flex; align-items:center; gap:6px;">${cardTitle}</div>
+          <span class="wa-status-badge" style="font-size:10px; background:rgba(37,211,102,0.15); color:${statusColor}; padding:2px 8px; border-radius:4px; font-weight:600;">${statusLabel}</span>
+        </div>
+        <div style="background:rgba(255,255,255,0.05); padding:10px 12px; border-radius:8px; font-size:12px;">
+          ${recipient ? `<div style="font-weight:600; color:#fff; font-size:12.5px; margin-bottom:4px;">📞 Recipient: <span style="color:#25D366;">${this.escapeHtml(recipient)}</span></div>` : ''}
+          ${senderAccount && !isPersonal ? `<div style="font-size:11px; color:rgba(255,255,255,0.5); margin-bottom:6px;">🏢 Sender Account: ${this.escapeHtml(senderAccount)}</div>` : ''}
+          <div style="margin:8px 0; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); padding:10px; border-radius:6px;">
+            <div style="font-size:10px; color:rgba(255,255,255,0.4); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">Exact Message Preview:</div>
+            <div style="color:#ffffff; font-size:12.5px; white-space:pre-wrap;">${this.escapeHtml(msgText)}</div>
+          </div>
+          ${isPendingConfirm ? `
+            <div style="font-size:10.5px; color:#ffd93d; background:rgba(255,217,61,0.08); border:1px solid rgba(255,217,61,0.25); padding:6px 8px; border-radius:6px; line-height:1.4;">
+              🛡️ <strong>Confirmation Required:</strong> Please review the recipient number and exact message above. This message will only be dispatched upon your explicit confirmation.
+            </div>
+          ` : ''}
+          ${isPersonal ? `
+            <div style="font-size:10.5px; color:#ffd93d; background:rgba(255,217,61,0.08); border:1px solid rgba(255,217,61,0.2); padding:6px 8px; border-radius:6px; line-height:1.4;">
+              ⚠️ <strong>Personal WhatsApp Notice:</strong> Opening the chat pre-fills your draft. You must review and tap Send inside WhatsApp. Mitra cannot verify personal delivery automatically.
+            </div>
+          ` : ''}
+          ${errorMsg ? `
+            <div style="margin-top:8px; font-size:11px; color:#ff453a; background:rgba(255,69,58,0.1); border:1px solid rgba(255,69,58,0.3); padding:8px 10px; border-radius:6px;">
+              ⚠️ ${this.escapeHtml(errorMsg)}
+            </div>
+          ` : ''}
+          ${actionButtons}
+        </div>
+      `;
+
+    } else if (capability === 'device' || capability === 'notification') {
+      const devData = backendData.device || backendData || {};
+      const isSuccess = devData.status === 'success' || backendData.status === 'success';
+      const msgText = devData.message || resultText || 'Urgent Call Alert';
+      const recipient = devData.recipient || 'Device Notification System';
+      const statusColor = isSuccess ? '#ff9f43' : '#ff453a';
+      const statusLabel = isSuccess ? 'Dispatched ✓' : 'Failed ✗';
+
+      // Emit event for NotificationDrawer and trigger browser notification ONLY on real-time execution
+      if (isRealtime) {
+        if (this.eventBus) {
+          try {
+            this.eventBus.emit('notification.received', {
+              title: '🔔 Device / Call Alert',
+              text: msgText,
+              message: msgText
+            });
+          } catch (e) {}
+        }
+        if (typeof window !== 'undefined' && 'Notification' in window) {
+          if (Notification.permission === 'granted') {
+            try { new Notification('🔔 Urgent Call Alert', { body: msgText }); } catch(e) {}
+          } else if (Notification.permission !== 'denied') {
+            Notification.requestPermission().then(p => {
+              if (p === 'granted') try { new Notification('🔔 Urgent Call Alert', { body: msgText }); } catch(e) {}
+            });
+          }
+        }
+      }
+
+      widgetContent = `
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid rgba(255, 255, 255, 0.1); padding-bottom:6px;">
+          <div style="font-weight:700; font-size:13px; color:#ff9f43; display:flex; align-items:center; gap:6px;">🔔 DEVICE / PHONE CALL ALERT</div>
+          <span style="font-size:10px; background:rgba(255,159,67,0.2); color:#ff9f43; padding:2px 6px; border-radius:4px; font-weight:600;">${statusLabel}</span>
         </div>
         <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; font-size:12px;">
-          <div style="font-weight:600; color:#fff; font-size:13px;">${this.escapeHtml(resultText)}</div>
+          <div style="font-weight:600; color:#fff; font-size:12px; margin-bottom:4px;">📲 System Target: ${this.escapeHtml(recipient)}</div>
+          <div style="color:rgba(255,255,255,0.85); font-size:12px; margin-bottom:6px;">🔔 Alert Content: "${this.escapeHtml(msgText)}"</div>
+          <div style="font-size:10px; color:#00e676; margin-top:4px; display:flex; align-items:center; gap:4px;">⚡ Real-time Device Push Triggered</div>
+        </div>
+      `;
+
+    } else if (capability === 'telegram') {
+      const tgData = backendData.telegram || backendData || {};
+      const isSuccess = tgData.status === 'success' || backendData.status === 'success';
+      const recipient = tgData.recipient || tgData.to || tgData.chat_id || '';
+      const msgText = tgData.message || resultText || '';
+      const note = tgData.note || backendData.note || '';
+      const statusColor = isSuccess ? '#0088cc' : '#ff453a';
+      const statusLabel = isSuccess ? 'Dispatched ✓' : 'Failed ✗';
+      const tgUser = (recipient || '').replace(/^@/, '');
+      const tgUrl = tgUser ? `https://t.me/${tgUser}` : 'https://t.me/blackhole_mitra_bot';
+      const tgShareUrl = `https://t.me/share/url?url=&text=${encodeURIComponent(msgText)}`;
+
+      widgetContent = `
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid rgba(255, 255, 255, 0.1); padding-bottom:6px;">
+          <div style="font-weight:700; font-size:13px; color:#0088cc; display:flex; align-items:center; gap:6px;">✈️ TELEGRAM DISPATCH</div>
+          <span style="font-size:10px; background:rgba(0,136,204,0.2); color:#38b6ff; padding:2px 6px; border-radius:4px; font-weight:600;">${statusLabel}</span>
+        </div>
+        <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; font-size:12px;">
+          ${recipient ? `<div style="font-weight:600; color:#fff; font-size:12px; margin-bottom:4px;">👤 Recipient: ${this.escapeHtml(recipient)}</div>` : ''}
+          <div style="color:rgba(255,255,255,0.85); font-size:12px; margin-bottom:6px;">💬 "${this.escapeHtml(msgText)}"</div>
+          <div style="font-size:10px; color:#a29bfe; margin-bottom:6px;">ℹ️ Text copied to clipboard! Click below to send pre-filled message via Telegram.</div>
+          <div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:6px;">
+            <a href="${tgShareUrl}" target="_blank" rel="noopener noreferrer" class="btn-copy-and-open" data-text="${this.escapeHtml(msgText)}" style="background:#0088cc; color:#fff; padding:6px 12px; border-radius:6px; font-size:11px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">📤 Send Pre-filled Telegram Message</a>
+            ${tgUser ? `<a href="${tgUrl}" target="_blank" rel="noopener noreferrer" class="btn-copy-and-open" data-text="${this.escapeHtml(msgText)}" style="background:rgba(0,136,204,0.2); border:1px solid rgba(0,136,204,0.4); color:#38b6ff; padding:6px 12px; border-radius:6px; font-size:11px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">✈️ Open Direct Chat (${this.escapeHtml(recipient)})</a>` : ''}
+          </div>
+        </div>
+      `;
+
+    } else if (capability === 'instagram') {
+      const igData = backendData.instagram || backendData || {};
+      const recipient = igData.recipient_id || igData.recipient || igData.to || '';
+      const msgText = igData.message || resultText || '';
+      const note = igData.note || backendData.note || '';
+      const igUser = (recipient || '').replace(/^@/, '');
+      const igUrl = igUser ? `https://instagram.com/direct/t/${igUser}` : 'https://instagram.com/direct/inbox/';
+
+      widgetContent = `
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid rgba(255, 255, 255, 0.1); padding-bottom:6px;">
+          <div style="font-weight:700; font-size:13px; color:#e1306c; display:flex; align-items:center; gap:6px;">📸 INSTAGRAM DM</div>
+          <span style="font-size:10px; background:linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888); color:#fff; padding:2px 6px; border-radius:4px; font-weight:600;">Dispatched ✓</span>
+        </div>
+        <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; font-size:12px;">
+          ${recipient ? `<div style="font-weight:600; color:#fff; font-size:12px; margin-bottom:4px;">👤 Recipient: ${this.escapeHtml(recipient)}</div>` : ''}
+          <div style="color:rgba(255,255,255,0.85); font-size:12px; margin-bottom:6px;">💬 "${this.escapeHtml(msgText)}"</div>
+          <div style="font-size:10px; color:#00e676; margin-bottom:6px;">📋 Message copied to clipboard! Paste (Ctrl+V) directly into Instagram chat box.</div>
+          <div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:6px;">
+            <a href="${igUrl}" target="_blank" rel="noopener noreferrer" class="btn-copy-and-open" data-text="${this.escapeHtml(msgText)}" style="background:linear-gradient(45deg, #f09433, #dc2743, #bc1888); color:#fff; padding:6px 12px; border-radius:6px; font-size:11px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">📸 Copy & Open Instagram Direct</a>
+          </div>
         </div>
       `;
 
@@ -686,42 +982,6 @@ export class ConversationPanel {
         ${bodyContent}
       `;
 
-    } else if (capability === 'artha' || capability === 'samruddhi') {
-      const companyTag = backendData.company_name || backendData.company_id || 'Artha Financial Analytics';
-      const balance = backendData.balance != null ? `₹${backendData.balance.toLocaleString()}` : null;
-      
-      let ledgerBody = '';
-      if (backendData.transactions && Array.isArray(backendData.transactions)) {
-        const rows = backendData.transactions.map(t => `
-          <tr>
-            <td style="padding:4px 6px; border-bottom:1px solid rgba(255,255,255,0.05);">${this.escapeHtml(t.date || '')}</td>
-            <td style="padding:4px 6px; border-bottom:1px solid rgba(255,255,255,0.05);">${this.escapeHtml(t.particulars || t.description || 'Entry')}</td>
-            <td style="padding:4px 6px; border-bottom:1px solid rgba(255,255,255,0.05); text-align:right; font-weight:600; color:${t.type === 'credit' ? '#00e676' : '#ff453a'};">${t.type === 'credit' ? '+' : '-'}₹${t.amount || 0}</td>
-          </tr>
-        `).join('');
-        ledgerBody = `
-          <table style="width:100%; border-collapse:collapse; font-size:11px; margin-top:6px;">
-            <thead><tr style="color:#a1a1aa; border-bottom:1px solid rgba(255,255,255,0.1); text-align:left;"><th>Date</th><th>Particulars</th><th style="text-align:right;">Amount</th></tr></thead>
-            <tbody>${rows}</tbody>
-          </table>
-        `;
-      } else {
-        ledgerBody = `
-          <div style="background:rgba(255,255,255,0.04); padding:10px; border-radius:6px; font-size:11px; color:#e0e0e0; line-height:1.5;">
-            ${this.escapeHtml(resultText || 'Financial analytics processed successfully.')}
-          </div>
-          ${balance ? `<div style="margin-top:6px; font-size:12px; font-weight:700; color:#00e676;">Ledger Balance: ${balance}</div>` : ''}
-        `;
-      }
-
-      widgetContent = `
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:6px;">
-          <div style="font-weight:700; font-size:13px; color:#00e676; display:flex; align-items:center; gap:6px;">💎 ARTHA FINANCIAL ANALYTICS</div>
-          <span style="font-size:10px; background:rgba(0,230,118,0.15); color:#00e676; padding:2px 6px; border-radius:4px;">${this.escapeHtml(companyTag)}</span>
-        </div>
-        ${ledgerBody}
-      `;
-
     } else {
       widgetContent = `
         <div style="font-weight:700; font-size:12px; color:#a29bfe; margin-bottom:4px;">⚙️ CAPABILITY EXECUTION [${capUpper}]</div>
@@ -749,6 +1009,206 @@ export class ConversationPanel {
       });
     }
 
+    const confirmSendBtn = card.querySelector('.btn-email-confirm-send');
+    if (confirmSendBtn) {
+      confirmSendBtn.addEventListener('click', async () => {
+        const actionId = confirmSendBtn.getAttribute('data-action-id');
+        confirmSendBtn.textContent = 'Sending via Gmail...';
+        confirmSendBtn.disabled = true;
+        try {
+          const res = await controlPlane.confirmCommunicationAction(actionId);
+          if (res.status === 'sent' || res.status === 'success') {
+            const badge = card.querySelector('.email-status-badge');
+            if (badge) {
+              badge.textContent = 'Sent ✓';
+              badge.style.color = '#00e676';
+              badge.style.background = 'rgba(0, 230, 118, 0.15)';
+            }
+            if (confirmSendBtn.parentElement) {
+              confirmSendBtn.parentElement.innerHTML = '<div style="color:#00e676; font-size:11px; font-weight:700;">✅ Email dispatched via Google Workspace!</div>';
+            }
+          } else {
+            const errMsg = res.error || res.detail || res.status || 'Failed to dispatch email';
+            const isNeedConnect = errMsg.toLowerCase().includes('connect') || errMsg.toLowerCase().includes('account');
+            const parent = confirmSendBtn.parentElement;
+            if (parent) {
+              parent.innerHTML = `
+                <div style="background:rgba(255,183,0,0.1); border:1px solid rgba(255,183,0,0.3); padding:8px 10px; border-radius:6px; color:#ffd93d; font-size:11px; margin-bottom:8px;">
+                  ⚠️ ${this.escapeHtml(errMsg)}
+                </div>
+                <div style="display:flex; gap:8px;">
+                  ${isNeedConnect ? `
+                    <button class="btn-connect-google-inline" style="background:#4285F4; border:none; color:#fff; padding:6px 12px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"/></svg>
+                      Connect Google Account
+                    </button>
+                  ` : ''}
+                  <button class="btn-retry-confirm-send" style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:#fff; padding:6px 12px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer;">
+                    🔄 Retry
+                  </button>
+                </div>
+              `;
+              const connBtn = parent.querySelector('.btn-connect-google-inline');
+              if (connBtn) {
+                connBtn.addEventListener('click', async () => {
+                  connBtn.textContent = 'Opening Google...';
+                  try {
+                    const authRes = await controlPlane.startGoogleOAuth('connect');
+                    if (authRes.url) {
+                      window.open(authRes.url, 'google_oauth', 'width=580,height=680,menubar=no,toolbar=no');
+                    }
+                  } catch (e) {
+                    alert('Could not start Google connection: ' + e.message);
+                    connBtn.textContent = 'Connect Google Account';
+                  }
+                });
+              }
+              const retryBtn = parent.querySelector('.btn-retry-confirm-send');
+              if (retryBtn) {
+                retryBtn.addEventListener('click', () => {
+                  confirmSendBtn.textContent = '✅ Confirm & Send via Gmail';
+                  confirmSendBtn.disabled = false;
+                  parent.replaceChildren(confirmSendBtn, cancelSendBtn);
+                });
+              }
+            }
+          }
+        } catch (err) {
+          confirmSendBtn.textContent = '✅ Confirm & Send via Gmail';
+          confirmSendBtn.disabled = false;
+          const parent = confirmSendBtn.parentElement;
+          if (parent) {
+            const errDiv = document.createElement('div');
+            errDiv.style.cssText = 'color:#ff453a; font-size:11px; margin-top:6px;';
+            errDiv.textContent = 'Error: ' + err.message;
+            parent.appendChild(errDiv);
+          }
+        }
+      });
+    }
+
+    const cancelSendBtn = card.querySelector('.btn-email-cancel-send');
+    if (cancelSendBtn) {
+      cancelSendBtn.addEventListener('click', async () => {
+        const actionId = cancelSendBtn.getAttribute('data-action-id');
+        cancelSendBtn.textContent = 'Cancelling...';
+        try {
+          await controlPlane.cancelCommunicationAction(actionId);
+          if (cancelSendBtn.parentElement) {
+            cancelSendBtn.parentElement.innerHTML = '<div style="color:#a1a1aa; font-size:11px;">Cancelled</div>';
+          }
+        } catch (e) {
+          if (cancelSendBtn.parentElement) cancelSendBtn.parentElement.remove();
+        }
+      });
+    }
+
+    // ── WhatsApp Confirmation & Cancellation Event Listeners ──
+    const confirmWaSendBtn = card.querySelector('.btn-whatsapp-confirm-send');
+    if (confirmWaSendBtn) {
+      confirmWaSendBtn.addEventListener('click', async () => {
+        const actionId = confirmWaSendBtn.getAttribute('data-action-id');
+        confirmWaSendBtn.textContent = 'Sending via Meta Cloud API...';
+        confirmWaSendBtn.disabled = true;
+        try {
+          const res = await controlPlane.confirmCommunicationAction(actionId);
+          if (res.status === 'sent' || res.status === 'success') {
+            const badge = card.querySelector('.wa-status-badge');
+            if (badge) {
+              badge.textContent = 'Accepted by Meta ✓';
+              badge.style.color = '#25D366';
+              badge.style.background = 'rgba(37, 211, 102, 0.15)';
+            }
+            const parent = confirmWaSendBtn.parentElement;
+            if (parent) {
+              parent.innerHTML = `
+                <div style="color:#25D366; font-size:11px; font-weight:700; display:flex; align-items:center; gap:6px;">
+                  <span>✅</span> Message accepted by Meta WhatsApp Business Cloud API!
+                </div>
+                <div style="color:rgba(255,255,255,0.5); font-size:10px; margin-top:2px;">
+                  Status: Handed off for delivery (Asynchronous delivery receipt pending).
+                </div>
+              `;
+            }
+          } else {
+            const errMsg = res.error || res.message || res.detail || 'Failed to dispatch WhatsApp message';
+            const parent = confirmWaSendBtn.parentElement;
+            if (parent) {
+              parent.innerHTML = `
+                <div style="background:rgba(255,59,48,0.1); border:1px solid rgba(255,59,48,0.3); padding:8px 10px; border-radius:6px; color:#ff453a; font-size:11px; margin-bottom:8px;">
+                  ⚠️ ${this.escapeHtml(errMsg)}
+                </div>
+                <div style="display:flex; gap:8px;">
+                  <button class="btn-retry-wa-confirm-send" style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:#fff; padding:6px 12px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer;">
+                    🔄 Retry
+                  </button>
+                  <button class="btn-open-settings-inline" style="background:#6C5CE7; border:none; color:#fff; padding:6px 12px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer;">
+                    ⚙️ Open Settings
+                  </button>
+                </div>
+              `;
+              const retryBtn = parent.querySelector('.btn-retry-wa-confirm-send');
+              if (retryBtn) {
+                retryBtn.addEventListener('click', () => {
+                  confirmWaSendBtn.textContent = '✅ Confirm & Send via WhatsApp';
+                  confirmWaSendBtn.disabled = false;
+                  parent.replaceChildren(confirmWaSendBtn, cancelWaSendBtn);
+                });
+              }
+              const settingsBtn = parent.querySelector('.btn-open-settings-inline');
+              if (settingsBtn) {
+                settingsBtn.addEventListener('click', () => {
+                  if (this.eventBus) this.eventBus.emit('settings.open_modal', {});
+                });
+              }
+            }
+          }
+        } catch (err) {
+          confirmWaSendBtn.textContent = '✅ Confirm & Send via WhatsApp';
+          confirmWaSendBtn.disabled = false;
+          const parent = confirmWaSendBtn.parentElement;
+          if (parent) {
+            const errDiv = document.createElement('div');
+            errDiv.style.cssText = 'color:#ff453a; font-size:11px; margin-top:6px;';
+            errDiv.textContent = 'Error: ' + err.message;
+            parent.appendChild(errDiv);
+          }
+        }
+      });
+    }
+
+    const cancelWaSendBtn = card.querySelector('.btn-whatsapp-cancel-send');
+    if (cancelWaSendBtn) {
+      cancelWaSendBtn.addEventListener('click', async () => {
+        const actionId = cancelWaSendBtn.getAttribute('data-action-id');
+        cancelWaSendBtn.textContent = 'Cancelling...';
+        try {
+          await controlPlane.cancelCommunicationAction(actionId);
+          if (cancelWaSendBtn.parentElement) {
+            cancelWaSendBtn.parentElement.innerHTML = '<div style="color:#a1a1aa; font-size:11px;">🚫 WhatsApp dispatch cancelled.</div>';
+          }
+        } catch (e) {
+          if (cancelWaSendBtn.parentElement) cancelWaSendBtn.parentElement.remove();
+        }
+      });
+    }
+
+    const connectGoogleInlineBtn = card.querySelector('.btn-connect-google-inline');
+    if (connectGoogleInlineBtn) {
+      connectGoogleInlineBtn.addEventListener('click', async () => {
+        try {
+          connectGoogleInlineBtn.textContent = 'Opening Google...';
+          const res = await controlPlane.startGoogleOAuth('connect');
+          if (res.url) {
+            window.open(res.url, 'google_oauth', 'width=580,height=680,menubar=no,toolbar=no');
+          }
+        } catch (err) {
+          alert('Could not start Google connection: ' + err.message);
+          connectGoogleInlineBtn.textContent = 'Connect Google Workspace';
+        }
+      });
+    }
+
     const copyTransBtn = card.querySelector('.btn-copy-translation');
     if (copyTransBtn) {
       copyTransBtn.addEventListener('click', () => {
@@ -762,6 +1222,16 @@ export class ConversationPanel {
         });
       });
     }
+
+    const copyAndOpenBtns = card.querySelectorAll('.btn-copy-and-open');
+    copyAndOpenBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const textToCopy = btn.getAttribute('data-text') || '';
+        if (textToCopy && navigator.clipboard) {
+          navigator.clipboard.writeText(textToCopy).catch(() => {});
+        }
+      });
+    });
 
     const taskCbs = card.querySelectorAll('.task-checkbox');
 
@@ -790,7 +1260,7 @@ export class ConversationPanel {
             const token = localStorage.getItem('authToken') || localStorage.getItem('token');
             if (token) headers['Authorization'] = `Bearer ${token}`;
             
-            await fetch(`https://mitra-backend-q1f3.onrender.com/api/pages/tasks/update?task_id=${encodeURIComponent(taskId)}&status=${newStatus}&user_id=${encodeURIComponent(userId)}`, {
+            await fetch(`${getApiBaseUrl()}/api/pages/tasks/update?task_id=${encodeURIComponent(taskId)}&status=${newStatus}&user_id=${encodeURIComponent(userId)}`, {
               method: 'POST',
               headers
             });
@@ -838,6 +1308,14 @@ export class ConversationPanel {
   }
 
   addCapabilityErrorCard(capability, errorText, data = {}) {
+    const isAuthErr = String(errorText).includes('401') || String(errorText).toLowerCase().includes('unauthorized') || String(errorText).toLowerCase().includes('token');
+    if (isAuthErr && typeof localStorage !== 'undefined') {
+      localStorage.removeItem('token');
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('jwt');
+      localStorage.removeItem('mitra_auth_token');
+    }
+
     const card = document.createElement('div');
     card.className = 'chat-bubble mitra capability-widget failure';
     card.style.background = 'rgba(35, 15, 15, 0.95)';
@@ -852,12 +1330,35 @@ export class ConversationPanel {
 
     card.innerHTML = `
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid rgba(255,59,48,0.2); padding-bottom:6px;">
-        <div style="font-weight:700; font-size:13px; color:#ff453a; display:flex; align-items:center; gap:6px;">⚠️ ${this.escapeHtml(capUpper)} EXECUTION FAILED</div>
-        <span style="font-size:10px; background:rgba(255,59,48,0.2); color:#ff453a; padding:2px 6px; border-radius:4px;">Failed</span>
+        <div style="font-weight:700; font-size:13px; color:#ff453a; display:flex; align-items:center; gap:6px;">⚠️ ${this.escapeHtml(capUpper)} ${isAuthErr ? 'AUTHENTICATION NEEDED' : 'EXECUTION FAILED'}</div>
+        <span style="font-size:10px; background:rgba(255,59,48,0.2); color:#ff453a; padding:2px 6px; border-radius:4px;">${isAuthErr ? 'Auth 401' : 'Failed'}</span>
       </div>
       <div style="font-size:12px; color:#ff8585; margin-bottom:4px;">${this.escapeHtml(errorText)}</div>
+      ${isAuthErr ? `
+        <div style="font-size:11px; color:#a29bfe; margin:6px 0;">💡 Stale login session cleaned. Connect your Google Workspace below:</div>
+        <button class="btn-connect-google-inline" style="background:#4285F4; border:none; color:#fff; padding:6px 12px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; margin-bottom:6px;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"/></svg>
+          Connect Google Workspace
+        </button>
+      ` : ''}
       <div class="chat-timestamp">${now}</div>
     `;
+
+    const connectBtn = card.querySelector('.btn-connect-google-inline');
+    if (connectBtn) {
+      connectBtn.addEventListener('click', async () => {
+        try {
+          connectBtn.textContent = 'Opening Google...';
+          const res = await controlPlane.startGoogleOAuth('connect');
+          if (res.url) {
+            window.open(res.url, 'google_oauth', 'width=580,height=680,menubar=no,toolbar=no');
+          }
+        } catch (err) {
+          alert('Could not start Google connection: ' + err.message);
+          connectBtn.textContent = 'Connect Google Workspace';
+        }
+      });
+    }
 
     this.element.appendChild(card);
     this.scrollToBottom();

@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MITRA Git & GitHub Workflow - Ashwini & Raj</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Architects+Daughter&family=Caveat:wght@600;700&family=Fira+Code:wght@400;600&family=Patrick+Hand&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-paper: #fbf7ee;
+      --grid-line: #ece2cb;
+      --ink-blue: #1a365d;
+      --ink-dark: #22222b;
+      --pencil-gray: #4b5563;
+      --raj-color: #c2410c;
+      --ash-color: #0284c7;
+      --green-highlight: #15803d;
+      --warn-red: #b91c1c;
+      --yellow-note: #fef08a;
+      --blue-note: #e0f2fe;
+      --green-note: #dcfce7;
+      --border-sketch: 2px solid #2d3748;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-paper);
+      background-image: 
+        linear-gradient(var(--grid-line) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+      background-size: 24px 24px;
+      font-family: 'Patrick Hand', cursive;
+      color: var(--ink-dark);
+      padding: 30px 20px;
+      font-size: 19px;
+      line-height: 1.4;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      background: rgba(255, 255, 255, 0.7);
+      border: 3px solid #2d3748;
+      border-radius: 12px 28px 14px 32px / 28px 12px 30px 14px;
+      box-shadow: 6px 8px 0px rgba(0,0,0,0.15);
+      padding: 35px 30px;
+      position: relative;
+    }
+
+    /* Sketchy Title */
+    .header-box {
+      text-align: center;
+      margin-bottom: 25px;
+      padding-bottom: 15px;
+      border-bottom: 2px dashed #94a3b8;
+    }
+
+    h1 {
+      font-family: 'Architects Daughter', cursive;
+      font-size: 32px;
+      color: var(--ink-blue);
+      letter-spacing: 0.5px;
+      transform: rotate(-0.5deg);
+      display: inline-block;
+      border-bottom: 3px solid #f59e0b;
+      padding-bottom: 4px;
+    }
+
+    .subtitle {
+      font-size: 20px;
+      color: var(--pencil-gray);
+      margin-top: 6px;
+    }
+
+    .repo-badge {
+      display: inline-block;
+      background: #1e293b;
+      color: #38bdf8;
+      font-family: 'Fira Code', monospace;
+      font-size: 15px;
+      padding: 4px 14px;
+      border-radius: 20px;
+      margin-top: 8px;
+    }
+
+    /* Golden Rule Banner */
+    .golden-rule-banner {
+      background: var(--yellow-note);
+      border: 2px solid #854d0e;
+      border-radius: 8px 18px 6px 22px;
+      padding: 14px 20px;
+      margin: 20px 0 30px 0;
+      text-align: center;
+      box-shadow: 3px 4px 0px rgba(133, 77, 14, 0.2);
+      transform: rotate(0.4deg);
+    }
+
+    .golden-rule-title {
+      font-family: 'Caveat', cursive;
+      font-size: 26px;
+      font-weight: 700;
+      color: #854d0e;
+      margin-bottom: 4px;
+    }
+
+    .golden-flow-text {
+      font-family: 'Architects Daughter', cursive;
+      font-size: 20px;
+      font-weight: bold;
+      color: #1e293b;
+      letter-spacing: 0.5px;
+    }
+
+    .golden-flow-text span {
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .tag-ash { background: #bae6fd; color: #0369a1; }
+    .tag-raj { background: #ffedd5; color: #c2410c; }
+    .tag-action { background: #e2e8f0; color: #334155; }
+    .tag-merge { background: #bbf7d0; color: #15803d; }
+
+    /* Layout Grid */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 25px;
+      margin-bottom: 30px;
+    }
+
+    @media (max-width: 850px) {
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+
+    /* Hand-drawn Cards */
+    .hand-card {
+      background: #ffffff;
+      border: 2px solid #334155;
+      border-radius: 12px 6px 14px 8px / 6px 14px 8px 12px;
+      padding: 20px;
+      box-shadow: 4px 4px 0px rgba(0,0,0,0.08);
+      position: relative;
+    }
+
+    .hand-card.blue { border-color: var(--ash-color); background: #f0f9ff; }
+    .hand-card.orange { border-color: var(--raj-color); background: #fff7ed; }
+    .hand-card.green { border-color: var(--green-highlight); background: #f0fdf4; }
+    .hand-card.red { border-color: var(--warn-red); background: #fef2f2; }
+
+    .card-label {
+      font-family: 'Caveat', cursive;
+      font-size: 24px;
+      font-weight: bold;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-label.blue { color: var(--ash-color); }
+    .card-label.orange { color: var(--raj-color); }
+    .card-label.green { color: var(--green-highlight); }
+    .card-label.red { color: var(--warn-red); }
+
+    /* Code Blocks */
+    .code-box {
+      background: #0f172a;
+      color: #38bdf8;
+      font-family: 'Fira Code', monospace;
+      font-size: 14.5px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      margin: 10px 0;
+      line-height: 1.5;
+      border: 1px solid #334155;
+    }
+
+    .code-comment {
+      color: #94a3b8;
+    }
+
+    .code-highlight {
+      color: #4ade80;
+      font-weight: 600;
+    }
+
+    .code-warn {
+      color: #f87171;
+    }
+
+    /* Diagram Section (Visual Flowchart) */
+    .diagram-canvas {
+      background: #ffffff;
+      border: 2px solid #1e293b;
+      border-radius: 16px;
+      padding: 25px;
+      margin: 25px 0;
+      position: relative;
+      overflow-x: auto;
+    }
+
+    .diagram-title {
+      font-family: 'Architects Daughter', cursive;
+      font-size: 22px;
+      color: var(--ink-blue);
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    /* Step sequence list */
+    .step-list {
+      list-style: none;
+    }
+
+    .step-item {
+      display: flex;
+      align-items: flex-start;
+      margin-bottom: 14px;
+      gap: 12px;
+    }
+
+    .step-num {
+      background: #0284c7;
+      color: #fff;
+      font-family: 'Fira Code', monospace;
+      font-size: 14px;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .step-content {
+      flex: 1;
+    }
+
+    /* SVG Diagram Styling */
+    svg.flow-svg {
+      width: 100%;
+      height: auto;
+      display: block;
+      margin: 0 auto;
+    }
+
+    .svg-text-title {
+      font-family: 'Architects Daughter', cursive;
+      font-size: 15px;
+      fill: #1e293b;
+      font-weight: bold;
+    }
+
+    .svg-text-code {
+      font-family: 'Fira Code', monospace;
+      font-size: 12.5px;
+      fill: #0369a1;
+    }
+
+    .svg-text-note {
+      font-family: 'Patrick Hand', cursive;
+      font-size: 14px;
+      fill: #475569;
+    }
+
+    /* Warning Sticky Note */
+    .sticky-note {
+      background: #fef08a;
+      border: 1px solid #eab308;
+      border-radius: 2px 2px 20px 2px;
+      padding: 16px 20px;
+      box-shadow: 4px 6px 8px rgba(0,0,0,0.12);
+      transform: rotate(-0.7deg);
+      margin: 25px 0;
+    }
+
+    .rules-list {
+      padding-left: 20px;
+      margin-top: 8px;
+    }
+
+    .rules-list li {
+      margin-bottom: 6px;
+    }
+
+    .highlight-red {
+      color: #b91c1c;
+      font-weight: bold;
+    }
+
+    .badge-branch {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-family: 'Fira Code', monospace;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .badge-master1 { background: #bae6fd; color: #0284c7; border: 1px solid #7dd3fc; }
+    .badge-main { background: #fed7aa; color: #c2410c; border: 1px solid #fdba74; }
+
+    .callout-box {
+      background: #ecfeff;
+      border-left: 5px solid #0891b2;
+      padding: 12px 16px;
+      border-radius: 4px;
+      margin: 12px 0;
+      font-size: 18px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    
+    <!-- HEADER -->
+    <div class="header-box">
+      <h1>MITRA Project: Git & GitHub Workflow</h1>
+      <div class="subtitle">Handwritten Engineering Flow & Branching Protocol (Ashwini & Raj)</div>
+      <div class="repo-badge">GitHub: https://github.com/praj33/MITRA.git</div>
+    </div>
+
+    <!-- GOLDEN RULE BANNER -->
+    <div class="golden-rule-banner">
+      <div class="golden-rule-title">★ THE GOLDEN RULE ★</div>
+      <div class="golden-flow-text">
+        <span class="tag-ash">MY WORK</span> → 
+        <span class="badge-master1">master1</span> → 
+        <span class="tag-action">GIT PUSH</span> → 
+        <span class="tag-raj">RAJ REVIEWS</span> → 
+        <span class="tag-merge">MERGE</span> → 
+        <span class="badge-main">main</span>
+      </div>
+    </div>
+
+    <!-- ROLES & BRANCH OVERVIEW -->
+    <div class="grid-2">
+      <!-- ASHWINI -->
+      <div class="hand-card blue">
+        <div class="card-label blue">
+          <span>👩‍💻 Ashwini's Domain</span>
+          <span class="badge-master1">master1</span>
+        </div>
+        <p>• Ashwini creates, modifies, and commits all feature & backend code <b>ONLY</b> on the <span class="badge-master1">master1</span> branch.</p>
+        <p>• <b>Never push directly to <span class="badge-main">main</span></b>.</p>
+        <p>• All daily commits & pushes go to <code>origin master1</code>.</p>
+      </div>
+
+      <!-- RAJ -->
+      <div class="hand-card orange">
+        <div class="card-label orange">
+          <span>👨‍💻 Raj's Domain</span>
+          <span class="badge-main">main</span>
+        </div>
+        <p>• Raj is the Repository Owner & maintainer of <span class="badge-main">main</span>.</p>
+        <p>• Raj reviews PRs / commits from <span class="badge-master1">master1</span>, runs staging tests, and performs the merge into <span class="badge-main">main</span>.</p>
+        <p>• <span class="badge-main">main</span> represents the single source of truth / production runtime.</p>
+      </div>
+    </div>
+
+    <!-- VISUAL SVG ARCHITECTURE DIAGRAM -->
+    <div class="diagram-canvas">
+      <div class="diagram-title">✏️ Visual Git & GitHub Branching Architecture</div>
+
+      <svg class="flow-svg" viewBox="0 0 950 620" xmlns="http://www.w3.org/2000/svg">
+        <!-- Background Grid accent -->
+        <rect x="10" y="10" width="930" height="600" rx="14" fill="#fafafa" stroke="#334155" stroke-width="2" stroke-dasharray="6,6"/>
+
+        <!-- GITHUB REMOTE REPO BOX -->
+        <rect x="40" y="30" width="870" height="150" rx="12" fill="#f8fafc" stroke="#1e293b" stroke-width="2"/>
+        <text x="60" y="60" class="svg-text-title" fill="#0f172a">☁️ GitHub Remote Repository: praj33/MITRA</text>
+
+        <!-- Remote main branch -->
+        <line x1="280" y1="95" x2="880" y2="95" stroke="#c2410c" stroke-width="4" stroke-linecap="round"/>
+        <circle cx="340" cy="95" r="7" fill="#ea580c"/>
+        <circle cx="580" cy="95" r="7" fill="#ea580c"/>
+        <circle cx="820" cy="95" r="9" fill="#15803d" stroke="#c2410c" stroke-width="3"/>
+        <rect x="100" y="78" width="160" height="34" rx="6" fill="#ffedd5" stroke="#ea580c" stroke-width="1.5"/>
+        <text x="115" y="100" font-family="Fira Code" font-size="13" font-weight="bold" fill="#c2410c">origin/main</text>
+        <text x="835" y="85" font-family="Patrick Hand" font-size="14" fill="#15803d">Merged!</text>
+
+        <!-- Remote master1 branch -->
+        <line x1="280" y1="145" x2="680" y2="145" stroke="#0284c7" stroke-width="4" stroke-linecap="round"/>
+        <circle cx="340" cy="145" r="7" fill="#0284c7"/>
+        <circle cx="500" cy="145" r="7" fill="#0284c7"/>
+        <circle cx="660" cy="145" r="7" fill="#0284c7"/>
+        <rect x="100" y="128" width="160" height="34" rx="6" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.5"/>
+        <text x="115" y="150" font-family="Fira Code" font-size="13" font-weight="bold" fill="#0284c7">origin/master1</text>
+
+        <!-- Merge arrow from origin/master1 to origin/main -->
+        <path d="M 660 145 C 720 145, 760 95, 810 95" fill="none" stroke="#15803d" stroke-width="3" stroke-dasharray="5,5"/>
+        <polygon points="815,95 805,90 805,100" fill="#15803d"/>
+        <rect x="670" y="105" width="130" height="24" rx="4" fill="#dcfce7" stroke="#15803d" stroke-width="1"/>
+        <text x="676" y="121" font-family="Patrick Hand" font-size="13" font-weight="bold" fill="#15803d">Raj PR Review & Merge</text>
+
+        <!-- DOWN ARROW: CLONE -->
+        <path d="M 180 180 L 180 270" fill="none" stroke="#64748b" stroke-width="2.5" marker-end="url(#arrow-down)"/>
+        <rect x="70" y="210" width="220" height="30" rx="6" fill="#fef9c3" stroke="#ca8a04" stroke-width="1"/>
+        <text x="78" y="230" font-family="Fira Code" font-size="11.5" fill="#854d0e">git clone .../praj33/MITRA.git</text>
+
+        <!-- LOCAL ENVIRONMENT BOX -->
+        <rect x="40" y="280" width="870" height="310" rx="12" fill="#ffffff" stroke="#0284c7" stroke-width="2.5"/>
+        <text x="60" y="310" class="svg-text-title" fill="#0369a1">💻 Ashwini's Local Machine (Working ONLY on master1)</text>
+
+        <!-- Step 1: Switch -->
+        <rect x="60" y="330" width="220" height="65" rx="8" fill="#f0f9ff" stroke="#0284c7" stroke-width="1.5"/>
+        <text x="75" y="352" font-family="Patrick Hand" font-size="16" font-weight="bold" fill="#0369a1">Step 1: Switch to master1</text>
+        <text x="75" y="378" font-family="Fira Code" font-size="12.5" fill="#0f172a">git switch master1</text>
+
+        <!-- Step 2: Code Changes & Commits -->
+        <rect x="320" y="330" width="260" height="150" rx="8" fill="#f8fafc" stroke="#334155" stroke-width="1.5"/>
+        <text x="335" y="355" font-family="Patrick Hand" font-size="16" font-weight="bold" fill="#1e293b">Step 2: Local Dev Cycle</text>
+        <text x="335" y="380" font-family="Fira Code" font-size="12" fill="#475569"># Edit code / chatbot / API</text>
+        <text x="335" y="405" font-family="Fira Code" font-size="12" fill="#0f172a">git status</text>
+        <text x="335" y="430" font-family="Fira Code" font-size="12" fill="#0f172a">git add .</text>
+        <text x="335" y="455" font-family="Fira Code" font-size="12" fill="#0f172a">git commit -m "feat:..."</text>
+
+        <!-- Step 3: Push to Origin master1 -->
+        <rect x="620" y="330" width="270" height="85" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+        <text x="635" y="355" font-family="Patrick Hand" font-size="16" font-weight="bold" fill="#065f46">Step 3: Push to GitHub</text>
+        <text x="635" y="385" font-family="Fira Code" font-size="12.5" font-weight="bold" fill="#047857">git push origin master1</text>
+        <text x="635" y="405" font-family="Patrick Hand" font-size="13" fill="#b91c1c">⚠️ Never push to main directly!</text>
+
+        <!-- Arrow from Step 1 to Step 2 -->
+        <line x1="280" y1="365" x2="320" y2="365" stroke="#0284c7" stroke-width="2.5"/>
+        <!-- Arrow from Step 2 to Step 3 -->
+        <line x1="580" y1="365" x2="620" y2="365" stroke="#059669" stroke-width="2.5"/>
+
+        <!-- Push Arrow UP to GitHub -->
+        <path d="M 750 330 C 750 250, 680 180, 665 155" fill="none" stroke="#059669" stroke-width="3" stroke-dasharray="4,4"/>
+        <polygon points="665,152 660,162 672,160" fill="#059669"/>
+        <rect x="710" y="225" width="180" height="28" rx="6" fill="#dcfce7" stroke="#059669" stroke-width="1"/>
+        <text x="718" y="244" font-family="Fira Code" font-size="11" font-weight="bold" fill="#065f46">git push origin master1 ↑</text>
+
+        <!-- SYNC / UPDATE WORKFLOW (BOTTOM OF LOCAL) -->
+        <rect x="60" y="495" width="830" height="80" rx="8" fill="#fffbeb" stroke="#d97706" stroke-width="1.5"/>
+        <text x="75" y="520" font-family="Patrick Hand" font-size="16" font-weight="bold" fill="#92400e">🔄 Future Sync Workflow: Pulling Raj's Latest Changes from main into master1</text>
+        <text x="75" y="548" font-family="Fira Code" font-size="12" fill="#78350f">git switch main && git pull origin main && git switch master1 && git merge main</text>
+        <text x="75" y="568" font-family="Patrick Hand" font-size="13" fill="#451a03">Resolve any conflicts → test chatbot/APIs → commit & push: <code>git push origin master1</code></text>
+      </svg>
+    </div>
+
+    <!-- STEP BY STEP WORKFLOW EXPLANATION -->
+    <div class="hand-card" style="margin-bottom: 25px;">
+      <div class="card-label">📋 Complete Step-by-Step Execution Guide</div>
+
+      <ul class="step-list">
+        <li class="step-item">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <b>Clone the Repository:</b>
+            <div class="code-box">git clone https://github.com/praj33/MITRA.git<br>cd MITRA-Universal-Companion</div>
+          </div>
+        </li>
+
+        <li class="step-item">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <b>Switch to your dedicated development branch (master1):</b>
+            <div class="code-box">git switch master1</div>
+            <div class="callout-box">
+              👉 <i>Check active branch anytime with:</i> <code>git branch</code> (The star <code>* master1</code> indicates you are safe on your branch).
+            </div>
+          </div>
+        </li>
+
+        <li class="step-item">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <b>Work & Commit Local Changes:</b>
+            <div class="code-box">
+              <span class="code-comment"># 1. Check modified files</span><br>
+              git status<br><br>
+              <span class="code-comment"># 2. Stage changes</span><br>
+              git add .<br><br>
+              <span class="code-comment"># 3. Commit with clear message</span><br>
+              git commit -m "feat: update companion chatbot UI and API bridge"
+            </div>
+          </div>
+        </li>
+
+        <li class="step-item">
+          <div class="step-num">4</div>
+          <div class="step-content">
+            <b>Push changes to GitHub (Only to master1):</b>
+            <div class="code-box">git push origin master1</div>
+            <p style="color: var(--warn-red); font-weight: bold; margin-top: 4px;">
+              🛑 Important: Ashwini's changes go to master1, NOT directly to main!
+            </p>
+          </div>
+        </li>
+
+        <li class="step-item">
+          <div class="step-num">5</div>
+          <div class="step-content">
+            <b>Raj's Review and Final Merge:</b>
+            <p>1. Local <code>master1</code> pushes to GitHub <code>origin/master1</code>.</p>
+            <p>2. Raj inspects the code, runs validation tests on staging.</p>
+            <p>3. Raj merges <code>master1 → main</code>.</p>
+            <p>4. After merge, <code>main</code> contains the approved production changes.</p>
+          </div>
+        </li>
+
+        <li class="step-item">
+          <div class="step-num">6</div>
+          <div class="step-content">
+            <b>Updating / Syncing your master1 with latest main:</b>
+            <p>When Raj adds new features or updates on <code>main</code>, sync your local <code>master1</code> branch:</p>
+            <div class="code-box">
+              git switch main<br>
+              git pull origin main<br>
+              git switch master1<br>
+              git merge main<br><br>
+              <span class="code-comment"># If any conflicts occur, resolve them, test, then:</span><br>
+              git push origin master1
+            </div>
+          </div>
+        </li>
+      </ul>
+    </div>
+
+    <!-- CONCRETE EXAMPLE WALKTHROUGH -->
+    <div class="hand-card green" style="margin-bottom: 25px;">
+      <div class="card-label green">🎯 Real Task Walkthrough Example: Task 1</div>
+      <p style="margin-bottom: 8px;"><b>Scenario:</b> Implementing the Chatbot UI / Assistant response enhancement.</p>
+      
+      <div class="code-box">
+        <span class="code-comment"># 1. Ensure on master1</span><br>
+        git switch master1<br><br>
+        <span class="code-comment"># 2. Modify chatbot frontend & backend files</span><br>
+        <span class="code-comment"># ... edit frontend/frontend/src/... and backend/app/... ...</span><br><br>
+        <span class="code-comment"># 3. Stage & Commit</span><br>
+        git add .<br>
+        git commit -m "feat: complete chatbot interface with multilingual TTS support"<br><br>
+        <span class="code-comment"># 4. Push to remote master1</span><br>
+        git push origin master1<br><br>
+        <span class="code-comment"># 5. Raj reviews PR on GitHub & merges into main</span><br>
+        <span class="code-highlight"># Task 1 → master1 → commit → push → Raj review → merge → main ✅</span>
+      </div>
+    </div>
+
+    <!-- SAFETY RULES STICKY NOTE -->
+    <div class="sticky-note">
+      <div style="font-family: 'Caveat', cursive; font-size: 26px; font-weight: bold; color: #991b1b; margin-bottom: 6px;">
+        ⚠️ STRICT SAFETY RULES (MANDATORY)
+      </div>
+      <ul class="rules-list">
+        <li><span class="highlight-red">1. NEVER push directly to main:</span> Raj alone decides when code enters <code>main</code>.</li>
+        <li><span class="highlight-red">2. NEVER use git push --force:</span> Force pushing overwrites commits and causes lost work.</li>
+        <li><b>3. ALWAYS develop on master1:</b> Verify branch with <code>git branch</code> before editing.</li>
+        <li><b>4. Push completed work only to master1:</b> <code>git push origin master1</code>.</li>
+        <li><b>5. Keep master1 synchronized:</b> Merge latest <code>main</code> into <code>master1</code> before starting major new milestones.</li>
+        <li><b>6. Raj reviews & merges:</b> Ashwini pushes → Raj reviews → Raj merges to <code>main</code>.</li>
+      </ul>
+    </div>
+
+  </div>
+
+</body>
+</html>
+
+

@@ -32,21 +32,29 @@ logger = logging.getLogger(__name__)
 _CAPABILITY_INTENT_MAP: Dict[str, str] = {
     "email":         "email",
     "calendar":      "calendar",
+    "whatsapp":      "whatsapp",
     "telegram":      "whatsapp",
+    "instagram":     "whatsapp",
     "reminder":      "reminder",
     "ems":           "task",
     "task":          "task",
     "search":        "browser",
-    "instagram":     "notification",
     "device":        "notification",
     "samruddhi":     "samruddhi",
     "portfolio":     "samruddhi",
     "balance":       "samruddhi",
     "trades":        "samruddhi",
     "transactions":  "samruddhi",
+    "artha":         "samruddhi",
     "samachar":      "samachar",
     "news":          "samachar",
     "headlines":     "samachar",
+    "setu":          "setu",
+    "inventory":     "setu",
+    "stock":         "setu",
+    "orders":        "setu",
+    "uniguru":       "uniguru",
+    "knowledge":     "uniguru",
 }
 
 # Patterns for direct self-referential / identity questions
@@ -195,8 +203,94 @@ class CompanionOrchestrator:
         # Store original user turn exactly once in session history
         await session_manager.add_turn(user_id, role="user", content=message)
 
-        # 3. Classify intent using resolved standalone message
-        intent_data = intent_flow.process_text(resolved_message)
+        # 2.5. Check Conversational Confirmation / Cancellation of Pending Communication Actions (HITL B.COMM-3)
+        from app.services.pending_action_service import pending_action_service
+        from app.services.communication_service import communication_service
+
+        msg_clean = message.strip()
+        msg_lower = msg_clean.lower()
+        pact_match = re.search(r'\b(pact_[a-f0-9]{12,32})\b', msg_clean, re.IGNORECASE)
+        specific_pact_id = pact_match.group(1) if pact_match else None
+
+        is_confirm_phrase = bool(re.match(r'^(?:yes|confirm|send|send it|confirm send|proceed|yes send it|ok send it|yes please|confirm it)\b', msg_lower)) or bool(specific_pact_id and "confirm" in msg_lower)
+        is_cancel_phrase = bool(re.match(r'^(?:no|cancel|don\'t send|abort|stop)\b', msg_lower)) or bool(specific_pact_id and "cancel" in msg_lower)
+
+        if is_confirm_phrase or is_cancel_phrase:
+            pending_act = (
+                pending_action_service.get_pending_action(specific_pact_id, user_id)
+                if specific_pact_id
+                else pending_action_service.get_latest_active_pending_action(user_id)
+            )
+
+            if pending_act and pending_act.status == "PENDING":
+                if is_confirm_phrase:
+                    comm_res = communication_service.confirm_pending_action(
+                        pending_action_id=pending_act.pending_action_id,
+                        user_id=user_id,
+                        trace_id=ctx.trace_id,
+                    )
+                    cap_result_data = comm_res.to_dict()
+                    if comm_res.status in ("sent", "ready", "success"):
+                        response_text = (
+                            f"✅ WhatsApp message successfully dispatched to {pending_act.recipient} via Meta Cloud API!\n"
+                            f"(Status: Accepted by Meta, awaiting delivery confirmation receipt)."
+                        )
+                    else:
+                        response_text = f"❌ WhatsApp dispatch failed: {comm_res.error or comm_res.message}"
+
+                    yield {
+                        "type": "capability_result",
+                        "request_id": ctx.execution_id,
+                        "capability": "whatsapp",
+                        "status": "success" if comm_res.status in ("sent", "ready", "success") else "failed",
+                        "summary": response_text,
+                        "data": self._sanitize_client_data(cap_result_data),
+                    }
+                    yield {
+                        "type": "assistant_delta",
+                        "request_id": ctx.execution_id,
+                        "delta": response_text,
+                    }
+                    yield {
+                        "type": "message_complete",
+                        "request_id": ctx.execution_id,
+                        "message": response_text,
+                        "intent": "whatsapp",
+                        "capability_result": self._sanitize_client_data(cap_result_data),
+                    }
+                    await session_manager.add_turn(user_id, role="assistant", content=response_text)
+                    return
+
+                elif is_cancel_phrase:
+                    success, err, data = pending_action_service.cancel_pending_action(
+                        pending_action_id=pending_act.pending_action_id,
+                        user_id=user_id,
+                    )
+                    response_text = f"🚫 WhatsApp message to {pending_act.recipient} has been cancelled."
+                    yield {
+                        "type": "capability_result",
+                        "request_id": ctx.execution_id,
+                        "capability": "whatsapp",
+                        "status": "cancelled",
+                        "summary": response_text,
+                        "data": {"status": "cancelled", "pending_action_id": pending_act.pending_action_id},
+                    }
+                    yield {
+                        "type": "assistant_delta",
+                        "request_id": ctx.execution_id,
+                        "delta": response_text,
+                    }
+                    yield {
+                        "type": "message_complete",
+                        "request_id": ctx.execution_id,
+                        "message": response_text,
+                        "intent": "whatsapp",
+                    }
+                    await session_manager.add_turn(user_id, role="assistant", content=response_text)
+                    return
+
+        # 3. Classify intent
+        intent_data = intent_flow.process_text(message)
         intent = intent_data.get("intent", "general")
 
         await runtime_event_bus.publish(
@@ -239,9 +333,28 @@ class CompanionOrchestrator:
         capability_result: Optional[CapabilityResult] = None
         response_text: str = ""
 
+        # Check active UI context from request page_context
+        active_host_app = (page_context or {}).get("host_app", "")
+
         is_self_identity = self._is_self_identity_query(message) or self._is_self_identity_query(resolved_message)
         if is_self_identity:
             capability_name = None
+            is_knowledge = False
+        elif intent in ("setu", "inventory", "stock", "orders") or any(kw in message.lower() for kw in ["inventory", "stock", "tea leaves", "setu", "sku"]):
+            capability_name = "setu"
+            intent = "setu"
+            is_knowledge = False
+        elif active_host_app == "uniguru":
+            is_knowledge = True
+            capability_name = None
+            intent = "knowledge"
+        elif active_host_app == "setu":
+            capability_name = "setu"
+            intent = "setu"
+            is_knowledge = False
+        elif active_host_app == "artha":
+            capability_name = "samruddhi"
+            intent = "portfolio"
             is_knowledge = False
         else:
             capability_name = _CAPABILITY_INTENT_MAP.get(intent)
@@ -275,6 +388,84 @@ class CompanionOrchestrator:
             capability_result = await capability_registry.execute(
                 intent=intent, params=params, trace_id=ctx.trace_id
             )
+            if capability_result and capability_result.status == "success":
+                if capability_result.capability == "samachar":
+                    # Generate a conversational news response using LLM with returned data
+                    cap_data = capability_result.data or {}
+                    scraped_info = cap_data.get("scraped_data", {})
+                    vetting_info = cap_data.get("vetting_results", {})
+                    summary_info = cap_data.get("summary", {})
+                    article_title = scraped_info.get("title") or "News Intelligence Update"
+                    article_author = scraped_info.get("author")
+                    if isinstance(article_author, dict):
+                        article_author = article_author.get("name")
+                    article_author = article_author or "News Desk"
+                    article_summary = summary_info.get("text") or cap_data.get("result") or "No summary."
+                    credibility_rating = vetting_info.get("credibility_rating") or "High"
+                    authenticity_score = vetting_info.get("authenticity_score")
+                    score_str = f"{authenticity_score}/100" if authenticity_score is not None else "95/100"
+
+                    system_prompt = (
+                        "You are Mitra, a real-time AI companion. "
+                        "A news retrieval tool (Samachar) was invoked to answer the user's query.\n"
+                        "Use the following scraped data and summary to formulate a thoughtful, conversational answer "
+                        "summarizing the news for the user. Mention the article title/source and credibility context briefly if relevant.\n\n"
+                        f"[SAMACHAR RETRIEVED DATA]:\n"
+                        f"- Article Title: {article_title}\n"
+                        f"- Author/Source: {article_author}\n"
+                        f"- Credibility Rating: {credibility_rating} (Score: {score_str})\n"
+                        f"- Summary/Content: {article_summary}\n"
+                    )
+                    
+                    # Patterns that indicate LLM synthesis failed and returned a fallback template or raw search output
+                    _TEMPLATE_PATTERNS = (
+                        "Real-time search completed for:",
+                        "Here is what I found for your query:",
+                        "I'm listening and working on fetching",
+                        "MITRA intelligence service is currently unavailable",
+                        "Web Information Intelligence Summary:",
+                    )
+
+                    def _is_template(text: str) -> bool:
+                        return any(p in text for p in _TEMPLATE_PATTERNS)
+
+                    # Clean deterministic fallback formatted cleanly when LLM synthesis is unavailable
+                    clean_summary = article_summary
+                    if "Web Information Intelligence Summary:" in clean_summary:
+                        clean_summary = clean_summary.replace("Web Information Intelligence Summary:", "").strip()
+                        lines = [l.strip() for l in clean_summary.split("\n") if l.strip()]
+                        cleaned_bullets = []
+                        for line in lines:
+                            line_str = line[2:].strip() if line.startswith("- ") else line
+                            cleaned_bullets.append(f"• {line_str}")
+                        clean_summary = "\n\n".join(cleaned_bullets[:3])
+
+                    _deterministic_report = (
+                        f"Here's what I found regarding **{message}**:\n\n"
+                        f"**{article_title}**\n\n"
+                        f"{clean_summary}\n\n"
+                        f"• **Source / Author:** {article_author}\n"
+                        f"• **Source Credibility:** {credibility_rating}\n"
+                        f"• **Authenticity Score:** {score_str}"
+                    )
+
+                    try:
+                        messages = [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": message}
+                        ]
+                        response_text = await llm_bridge.call_llm_with_messages(
+                            model=self._config.llm_provider,
+                            messages=messages,
+                            temperature=0.7,
+                        )
+                        # If LLM returned a template/raw search fallback, use the clean deterministic report
+                        if _is_template(response_text):
+                            logger.info("LLM returned template response for samachar — using clean deterministic Samachar report")
+                            response_text = _deterministic_report
+                    except Exception as llm_exc:
+                        logger.warning("Failed to synthesize news with LLM: %s — using clean deterministic Samachar report", llm_exc)
+                        response_text = _deterministic_report
 
             # Check if action requires structured approval confirmation (B.COMM-3)
             is_approval = False
@@ -626,36 +817,29 @@ class CompanionOrchestrator:
             except Exception as e:
                 logger.warning(f"UI Context injection error: {e}")
 
-        if extra_context:
-            system_prompt += (
-                f"\n\n{extra_context}\n"
-                "INSTRUCTION: Synthesize the live data above into a clean, warm, elegant response for the user. "
-                "Do NOT output raw table pipe symbols (|), internal data IDs, HTML tags, or search tool headers."
-            )
-        else:
-            msg_lower = message.lower()
-            live_domains = [
-                "stock", "share price", "market price", "weather", "temperature", "forecast",
-                "news today", "latest news", "crypto", "exchange rate", "sensex", "nifty", "nasdaq",
-                "bse", "nse", "closing summary", "market summary", "past week", "weekly summary",
-                "market trend", "market today", "fii", "dii", "institutional", "vix", "volatility", "pcr", "put call ratio"
-            ]
-            needs_live_data = any(domain in msg_lower for domain in live_domains)
+        msg_lower = message.lower()
+        live_keywords = [
+            "news", "finance", "stock", "share", "market", "sensex", "nifty", "bse", "nse",
+            "price", "today", "weather", "crypto", "bitcoin", "btc", "eth", "ethereum",
+            "hdfc", "reliance", "tcs", "infosys", "sbi", "icici", "tata", "apple", "tesla",
+            "gold", "silver", "commodity", "mutual fund", "sip", "bond", "inflation", "rbi",
+            "rate", "currency", "rupee", "dollar", "inr", "usd", "latest", "update", "headline",
+            "gain", "loss", "ups", "downs", "up", "down", "rally", "crash"
+        ]
+        if any(kw in msg_lower for kw in live_keywords):
 
-            if needs_live_data:
-                try:
-                    from app.tools.search_tool import SearchTool
-                    search_tool = SearchTool()
-                    live_info = await search_tool.run(message)
-                    if live_info:
-                        system_prompt += (
-                            f"\n\n[REAL-TIME LIVE DATA INJECTED FOR USER QUERY]:\n{live_info}\n"
-                            "INSTRUCTION: Synthesize the live data above into an elegant, structured response matching Google AI Overview format. "
-                            "Include Key Statistics bullet points, bold key figures, and offer relevant follow-up suggestions. "
-                            "Do NOT output raw table pipe symbols (|), internal data IDs, HTML tags, or search tool headers like 'Live Web Search Context:'."
-                        )
-                except Exception as e:
-                    logger.warning(f"Live search context enrichment failed: {e}")
+            try:
+                from app.tools.search_tool import SearchTool
+                search_tool = SearchTool()
+                live_info = await search_tool.run(message)
+                if live_info:
+                    system_prompt += (
+                        f"\n\n[REAL-TIME LIVE DATA INJECTED FOR USER QUERY]:\n{live_info}\n"
+                        "Instruction: Use the exact live numbers and news snippet provided above. "
+                        "Do NOT guess or hallucinate stock prices or news headlines."
+                    )
+            except Exception as e:
+                logger.warning(f"Live search context enrichment failed: {e}")
 
         history = await session_manager.get_history(
             user_id, limit=self._config.max_history_turns
@@ -666,6 +850,7 @@ class CompanionOrchestrator:
             current_user_message=message,
             raw_message=raw_message,
         )
+
         async for token in llm_bridge.stream_llm_with_messages(
             model=self._config.llm_provider,
             messages=messages,

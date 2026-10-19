@@ -22,7 +22,7 @@ import WorkflowsPage from './components/pages/WorkflowsPage';
 import KnowledgePage from './components/pages/KnowledgePage';
 import AnalyticsPage from './components/pages/AnalyticsPage';
 import Login from './components/auth/Login';
-import { useCompanionStore, useIsMobile } from './store/companion.store';
+import { useCompanionStore, useIsMobile, toggleMitraChatbotWindow } from './store/companion.store';
 import { CompanionService } from './services/companion.service';
 import { getAuthToken, setAuthToken, getApiBase, getAuthHeaders } from './services/apiConfig';
 import { cn } from './lib/utils';
@@ -112,6 +112,7 @@ const App: React.FC = () => {
     userId, sidebar, contextPanel, isMobile, authModalOpen, setAuthModalOpen,
     setStatus, setSessionId, setUserName, setMemory, setAuth, setAuthStatus,
     addMessage, updateMessage, clearMessages, addNotification, addContextItem,
+    chatbotOpen,
   } = useCompanionStore();
 
   const [activeSection, setActiveSection] = useState(() => {
@@ -130,12 +131,27 @@ const App: React.FC = () => {
     (window as any).__MITRA_INTEGRATIONS__ = () => setIntegrationsOpen(true);
   }, []);
 
-  // Global Ctrl+K / Cmd+K listener
+  // Listen for real <mitra-companion> Floating Orb state changes (Ashwini's orb)
+  useEffect(() => {
+    const handleOrbState = (e: any) => {
+      const isOpen = Boolean(e?.detail?.open);
+      useCompanionStore.getState().setChatbotOpen(isOpen);
+    };
+    window.addEventListener('mitra:orb-state-changed', handleOrbState);
+    return () => window.removeEventListener('mitra:orb-state-changed', handleOrbState);
+  }, []);
+
+  // Global Ctrl+K / Cmd+K & Ctrl+M / Cmd+M listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setCmdOpen(prev => !prev);
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'm') {
+        e.preventDefault();
+        const opened = toggleMitraChatbotWindow();
+        showToast('info', 'MITRA Companion', opened ? 'Chatbot opened' : 'Chatbot closed');
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -154,10 +170,12 @@ const App: React.FC = () => {
     const init = async () => {
       // 1. Check for OAuth callback tokens or error query params in URL
       const urlParams = new URLSearchParams(window.location.search);
-      const urlToken = urlParams.get('token');
-      const urlError = urlParams.get('error');
-      const urlProvider = urlParams.get('provider');
-      const urlStatus = urlParams.get('status');
+      const hashParams = new URLSearchParams(window.location.hash.startsWith('#') ? window.location.hash.substring(1) : window.location.hash);
+      const urlToken = urlParams.get('token') || hashParams.get('token') || urlParams.get('access_token') || hashParams.get('access_token');
+      const urlError = urlParams.get('error') || hashParams.get('error') || urlParams.get('error_description');
+      const urlProvider = urlParams.get('provider') || hashParams.get('provider');
+      const urlStatus = urlParams.get('status') || hashParams.get('status');
+      const cleanPath = window.location.pathname.startsWith('/auth/callback') ? '/' : window.location.pathname;
 
       if (urlError) {
         let friendlyMsg = 'Sign-in could not be completed. Please try again.';
@@ -170,18 +188,18 @@ const App: React.FC = () => {
         }
         showToast('error', 'Authentication Failed', friendlyMsg);
         setAuthStatus('AUTH_ERROR');
-        window.history.replaceState({}, document.title, window.location.pathname);
+        window.history.replaceState({}, document.title, cleanPath);
       }
 
       if (urlToken) {
         setAuthToken(urlToken);
         showToast('success', 'Sign In Successful', 'Welcome to Mitra!');
-        window.history.replaceState({}, document.title, window.location.pathname);
+        window.history.replaceState({}, document.title, cleanPath);
       }
 
       if (urlStatus === 'success' && urlProvider) {
         showToast('success', 'Connected', `Successfully connected ${urlProvider} account.`);
-        window.history.replaceState({}, document.title, window.location.pathname);
+        window.history.replaceState({}, document.title, cleanPath);
       }
 
       // 2. Session recovery for logged-in user
@@ -438,7 +456,8 @@ const App: React.FC = () => {
   useEffect(() => {
     (window as any).__MITRA_SEND__ = handleSend;
     (window as any).__MITRA_NEW_CHAT__ = handleNewChat;
-  }, [handleSend, handleNewChat]);
+    (window as any).__MITRA_STOP__ = handleStop;
+  }, [handleSend, handleNewChat, handleStop]);
   // Expose settings toggle for Sidebar
   useEffect(() => { (window as any).__MITRA_SETTINGS__ = () => setSettingsOpen(true); }, []);
   // Expose focus toggle

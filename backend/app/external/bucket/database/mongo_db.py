@@ -27,7 +27,7 @@ class MongoDBClient:
         for attempt in range(self.max_retries):
             try:
                 logger.debug(f"Attempting MongoDB connection (attempt {attempt + 1})")
-                self.client = MongoClient(mongo_uri)
+                self.client = MongoClient(mongo_uri, serverSelectionTimeoutMS=2000)
                 self.db = self.client["workflow_ai"]
                 self.client.admin.command('ping')
                 logger.info("Successfully connected to MongoDB")

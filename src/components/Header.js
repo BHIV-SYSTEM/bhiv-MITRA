@@ -6,7 +6,7 @@ export class Header {
     this.element.innerHTML = `
       <div class="mitra-title">
         <div class="mitra-status-dot"></div>
-        <div class="mitra-header-avatar" style="width: 24px; height: 24px; border-radius: 50%; overflow: hidden; display: none; align-items: center; justify-content: center; margin-right: 8px;"></div>
+        <div class="mitra-header-avatar" title="Click to change avatar" style="width: 28px; height: 28px; border-radius: 50%; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; margin-right: 6px; border: 1.5px solid rgba(162, 155, 254, 0.6); box-shadow: 0 0 8px rgba(108, 92, 231, 0.5); cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;"></div>
         MITRA
       </div>
       <div class="mitra-controls">
@@ -26,7 +26,26 @@ export class Header {
       </div>
     `;
 
-    this.element.querySelector('#btn-minimize').addEventListener('click', () => {
+    const headerAvatar = this.element.querySelector('.mitra-header-avatar');
+    if (headerAvatar) {
+      headerAvatar.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (onAvatarChange) onAvatarChange();
+      });
+      headerAvatar.addEventListener('mouseenter', () => {
+        headerAvatar.style.transform = 'scale(1.12)';
+        headerAvatar.style.borderColor = '#a29bfe';
+        headerAvatar.style.boxShadow = '0 0 12px rgba(162, 155, 254, 0.9)';
+      });
+      headerAvatar.addEventListener('mouseleave', () => {
+        headerAvatar.style.transform = 'scale(1)';
+        headerAvatar.style.borderColor = 'rgba(162, 155, 254, 0.6)';
+        headerAvatar.style.boxShadow = '0 0 8px rgba(108, 92, 231, 0.5)';
+      });
+    }
+
+    this.element.querySelector('#btn-minimize').addEventListener('click', (e) => {
+      e.stopPropagation();
       if (onMinimize) onMinimize();
     });
 
@@ -56,17 +75,16 @@ export class Header {
 
   updateAvatar(avatarUrl, renderAvatarElement) {
     const container = this.element.querySelector('.mitra-header-avatar');
+    if (!container) return;
     container.innerHTML = '';
-    if (avatarUrl) {
-      container.style.display = 'inline-flex';
-      const el = renderAvatarElement(avatarUrl);
+    container.style.display = 'inline-flex';
+    if (typeof renderAvatarElement === 'function') {
+      const el = renderAvatarElement(avatarUrl || 'default');
       if (el) {
-        el.style.width = '24px';
-        el.style.height = '24px';
+        el.style.width = '100%';
+        el.style.height = '100%';
         container.appendChild(el);
       }
-    } else {
-      container.style.display = 'none';
     }
   }
 
@@ -77,7 +95,7 @@ export class Header {
     dot.setAttribute('title', titleText);
 
     const sLower = (status || '').toLowerCase();
-    
+
     if (sLower === 'healthy' || sLower === 'success' || sLower === 'recovered') {
       dot.style.background = '#00e676';
       dot.style.boxShadow = '0 0 8px #00e676';

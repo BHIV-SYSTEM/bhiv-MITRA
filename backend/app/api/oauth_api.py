@@ -40,7 +40,12 @@ def _get_frontend_base_url(request: Optional[Request] = None) -> str:
         host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
         if host and not host.startswith("localhost") and not host.startswith("127.0.0.1"):
             return f"{proto}://{host}"
-    return env_frontend or "http://localhost:3000"
+        referer = request.headers.get("referer") or request.headers.get("origin") or ""
+        if "8080" in referer:
+            return "http://localhost:8080"
+        if "3000" in referer:
+            return "http://localhost:3000"
+    return env_frontend or "http://localhost:8080"
 
 def _resolve_redirect_uri(provider_name: str, request: Optional[Request] = None) -> str:
     """

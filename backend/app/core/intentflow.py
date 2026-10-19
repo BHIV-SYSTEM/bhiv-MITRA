@@ -10,18 +10,28 @@ import dateutil.parser as parser
 
 class IntentFlow:
     def __init__(self):
-        # Intent patterns and keywords
+        # Intent patterns and keywords (Messaging intents prioritized first!)
         self.intent_patterns = {
+            'telegram': ['telegram', 'send telegram', 'send tg', 'telegram message', 'msg on telegram', 'telegram to'],
+            'whatsapp': ['whatsapp', 'send whatsapp', 'send wa', 'whatsapp message', 'msg on whatsapp', 'whatsapp to'],
+            'instagram': ['instagram', 'insta', 'send dm', 'instagram dm'],
+            'email': ['send email', 'email to', 'send mail', 'compose email', 'email'],
             'summarize': ['summarize', 'summary', 'summarise', 'tl;dr', 'key points', 'brief'],
             'reminder': ['remind', 'reminder', 'alert me', 'notify me', 'set a reminder', 'set reminder'],
             'calendar': ['calendar', 'meeting', 'appointment', 'event', 'schedule a', 'schedule meeting'],
             'task': ['task', 'todo', 'to-do', 'create task', 'add to list', 'assign task'],
             'search': ['search', 'find', 'lookup', 'query', 'research'],
-            'email': ['email', 'send mail', 'compose', 'message'],
-            'telegram': ['telegram', 'send telegram'],
-            'instagram': ['instagram', 'insta', 'send dm'],
             'ems': ['ems', 'ems task'],
             'device': ['device', 'desktop', 'mobile', 'tablet', 'xr'],
+            'setu': ['setu', 'inventory', 'stock', 'order', 'orders', 'tea leaves', 'tally', 'supply'],
+            'uniguru': ['uniguru', 'newton', 'laws of motion', 'energy', 'physics', 'science', 'math', 'equation', 'formula', 'concept'],
+            'news': [
+                'news', 'samachar', 'headlines', 'articles', 'press', 'media',
+                'latest update', 'breaking news', 'top stories', 'current events',
+                'khabar', 'khabre', 'batao samachar', 'news batao', 'aaj ki khabar',
+                'what happened', 'what is happening', 'news from', 'article from',
+                'http://', 'https://'
+            ],
             'general': []  # fallback
         }
 
@@ -36,15 +46,30 @@ class IntentFlow:
         }
 
     def classify_intent(self, text: str) -> str:
-        """Classify the primary intent from text."""
+        """Classify the primary intent from text with explicit action priority."""
         text_lower = text.lower().strip()
+
+        # Explicit messaging command overrides (prevents body words like 'meeting' from hijacking intent)
+        if any(kw in text_lower for kw in ('send telegram', 'telegram message', 'msg on telegram', 'telegram to', 'telegram')):
+            if not text_lower.startswith('what is telegram'):
+                return 'telegram'
+        if any(kw in text_lower for kw in ('send whatsapp', 'whatsapp message', 'msg on whatsapp', 'whatsapp to', 'whatsapp')):
+            if not text_lower.startswith('what is whatsapp'):
+                return 'whatsapp'
+        if any(kw in text_lower for kw in ('send instagram', 'instagram dm', 'send dm')):
+            return 'instagram'
+        if any(kw in text_lower for kw in ('send email', 'email to', 'send mail', 'compose email')):
+            return 'email'
 
         # Check for definitional/knowledge questions ("what is the calendar", "what is a reminder", "explain tasks")
         info_prefixes = ("what is ", "what are ", "explain ", "tell me about ", "how does ", "define ")
         has_personal_context = any(k in text_lower for k in ("my ", "on my", "for me", "i have", "due"))
 
         if any(text_lower.startswith(p) for p in info_prefixes) and not has_personal_context:
-            return 'general'
+            # Bypass general fallback if the query contains news-related terms (e.g. "what is happening")
+            news_keywords = self.intent_patterns.get('news', [])
+            if not any(k in text_lower for k in news_keywords):
+                return 'general'
 
         # Email priority: if text explicitly refers to inbox, email(s), or mailbox
         if re.search(r'\b(?:inbox|emails?|mailbox|gmail|drafts?)\b', text_lower):

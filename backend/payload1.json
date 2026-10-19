@@ -1,0 +1,5 @@
+{
+  "version": "3.0.0",
+  "input": {"message": "What is the live telemetry for CPU?"},
+  "context": {"session_id": "test-user-1"}
+}

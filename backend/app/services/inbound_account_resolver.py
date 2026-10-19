@@ -100,63 +100,99 @@ class InboundAccountResolver:
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Optional[str]:
         norm_phone = normalize_phone_number(sender_phone)
-        if not norm_phone:
-            logger.warning("WhatsApp inbound event missing sender phone number.")
-            return None
+        meta_dict = metadata or {}
+        phone_number_id = str(meta_dict.get("phone_number_id") or "").strip()
+        display_phone = normalize_phone_number(meta_dict.get("display_phone_number") or recipient_identity)
 
         # 1. Check in-memory test overrides (thread-safe)
         with _LOCK:
-            mem_key = f"whatsapp:{norm_phone}"
-            if mem_key in _TEST_ACCOUNT_MAPPINGS:
-                return _TEST_ACCOUNT_MAPPINGS[mem_key]
-            # Also check without leading plus
-            alt_key = f"whatsapp:{norm_phone.lstrip('+')}"
-            if alt_key in _TEST_ACCOUNT_MAPPINGS:
-                return _TEST_ACCOUNT_MAPPINGS[alt_key]
+            if norm_phone:
+                mem_key = f"whatsapp:{norm_phone}"
+                if mem_key in _TEST_ACCOUNT_MAPPINGS:
+                    return _TEST_ACCOUNT_MAPPINGS[mem_key]
+                alt_key = f"whatsapp:{norm_phone.lstrip('+')}"
+                if alt_key in _TEST_ACCOUNT_MAPPINGS:
+                    return _TEST_ACCOUNT_MAPPINGS[alt_key]
+
+            # Also check business phone_number_id and display_phone test overrides
+            if phone_number_id:
+                for k in (f"whatsapp_business:{phone_number_id}", f"whatsapp:{phone_number_id}"):
+                    if k in _TEST_ACCOUNT_MAPPINGS:
+                        return _TEST_ACCOUNT_MAPPINGS[k]
+            if display_phone:
+                for k in (f"whatsapp_business:{display_phone}", f"whatsapp:{display_phone}"):
+                    if k in _TEST_ACCOUNT_MAPPINGS:
+                        return _TEST_ACCOUNT_MAPPINGS[k]
 
         # 2. Check MongoDB connected_accounts
         db = _get_db()
         if db is not None:
             try:
-                candidates = [norm_phone, norm_phone.lstrip("+")]
-                record = db["connected_accounts"].find_one({
-                    "provider": {"$in": ["whatsapp", "meta_whatsapp"]},
-                    "status": {"$in": ["connected", "active"]},
-                    "$or": [
+                # Personal / direct sender match candidates
+                candidates = []
+                if norm_phone:
+                    candidates.extend([norm_phone, norm_phone.lstrip("+")])
+                if display_phone:
+                    candidates.extend([display_phone, display_phone.lstrip("+")])
+
+                or_clauses = []
+                if candidates:
+                    or_clauses.extend([
                         {"email": {"$in": candidates}},
                         {"provider_account_id": {"$in": candidates}},
                         {"phone_number": {"$in": candidates}},
-                    ]
-                })
-                if record and record.get("user_id"):
-                    uid = str(record["user_id"]).strip()
-                    if uid and uid.lower() not in ("user_default", "default", "none", "null"):
-                        return uid
+                    ])
+                if phone_number_id:
+                    or_clauses.extend([
+                        {"provider_account_id": phone_number_id},
+                        {"extra_data.phone_number_id": phone_number_id},
+                    ])
+
+                if or_clauses:
+                    record = db["connected_accounts"].find_one({
+                        "provider": {"$in": ["whatsapp", "meta_whatsapp", "whatsapp_business"]},
+                        "status": {"$in": ["connected", "active"]},
+                        "$or": or_clauses
+                    })
+                    if record and record.get("user_id"):
+                        uid = str(record["user_id"]).strip()
+                        if uid and uid.lower() not in ("user_default", "default", "none", "null"):
+                            return uid
 
                 # 3. Check user_integrations (verified WhatsApp number)
-                ui_record = db["user_integrations"].find_one({
-                    "$or": [
-                        {"whatsapp.phone": {"$in": candidates}, "whatsapp.verified": True},
-                        {"whatsapp.verified_phone": {"$in": candidates}},
-                    ]
-                })
-                if ui_record and ui_record.get("user_id"):
-                    uid = str(ui_record["user_id"]).strip()
-                    if uid and uid.lower() not in ("user_default", "default", "none", "null"):
-                        return uid
+                if candidates:
+                    ui_record = db["user_integrations"].find_one({
+                        "$or": [
+                            {"whatsapp.phone": {"$in": candidates}, "whatsapp.verified": True},
+                            {"whatsapp.verified_phone": {"$in": candidates}},
+                        ]
+                    })
+                    if ui_record and ui_record.get("user_id"):
+                        uid = str(ui_record["user_id"]).strip()
+                        if uid and uid.lower() not in ("user_default", "default", "none", "null"):
+                            return uid
 
                 # 4. Check users collection
-                u_record = db["users"].find_one({"phone": {"$in": candidates}})
-                if u_record and u_record.get("user_id"):
-                    uid = str(u_record["user_id"]).strip()
-                    if uid and uid.lower() not in ("user_default", "default", "none", "null"):
-                        return uid
+                if candidates:
+                    u_record = db["users"].find_one({"phone": {"$in": candidates}})
+                    if u_record and u_record.get("user_id"):
+                        uid = str(u_record["user_id"]).strip()
+                        if uid and uid.lower() not in ("user_default", "default", "none", "null"):
+                            return uid
             except Exception as exc:
                 logger.error("Error querying database in InboundAccountResolver: %s", exc)
 
+        # 5. Check environment fallback if configured
+        env_phone_id = os.getenv("META_WA_PHONE_NUMBER_ID", "").strip()
+        env_owner_uid = os.getenv("META_WA_OWNER_USER_ID", "").strip()
+        if phone_number_id and env_phone_id and phone_number_id == env_phone_id and env_owner_uid:
+            if env_owner_uid.lower() not in ("user_default", "default", "none", "null"):
+                return env_owner_uid
+
         logger.info(
-            "InboundAccountResolver: unresolved WhatsApp sender '%s' (fail closed).",
-            norm_phone
+            "InboundAccountResolver: unresolved WhatsApp sender '%s' / phone_id '%s' (fail closed).",
+            norm_phone or "none",
+            phone_number_id or "none"
         )
         return None
 
@@ -243,6 +279,8 @@ class InboundAccountResolver:
         clean_platform = platform.strip().lower()
         if clean_platform in ("whatsapp", "wa"):
             norm_id = normalize_phone_number(external_id)
+        elif clean_platform == "whatsapp_business":
+            norm_id = external_id.strip()
         elif clean_platform in ("email", "mail"):
             norm_id = normalize_email_address(external_id)
         else:

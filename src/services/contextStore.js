@@ -48,7 +48,11 @@ export class ContextStore {
 
   saveState() {
     try {
-      localStorage.setItem(this.storageKey, JSON.stringify(this.state));
+      const stateToSave = { ...this.state };
+      if (stateToSave.avatar && stateToSave.avatar.length > 500 * 1024) {
+        stateToSave.avatar = 'indexed_db_asset';
+      }
+      localStorage.setItem(this.storageKey, JSON.stringify(stateToSave));
       eventBus.emit('context.saved', { timestamp: new Date().toISOString() });
     } catch (e) {
       console.warn('[MITRA] Failed to save context to localStorage', e);
@@ -163,12 +167,36 @@ export class ContextStore {
 
   setAvatar(avatarDataUrl) {
     this.state.avatar = avatarDataUrl;
+    try {
+      if (typeof localStorage !== 'undefined') {
+        if (avatarDataUrl && avatarDataUrl !== 'default' && avatarDataUrl.length > 20) {
+          if (avatarDataUrl.length < 500 * 1024) {
+            localStorage.setItem('mitra_avatar_custom', avatarDataUrl);
+            localStorage.setItem('mitra_custom_avatar', avatarDataUrl);
+            localStorage.setItem('mitra_avatar_data_url', avatarDataUrl);
+          } else {
+            localStorage.setItem('mitra_companion_asset_indexed', 'true');
+          }
+        } else {
+          localStorage.removeItem('mitra_avatar_data_url');
+          localStorage.removeItem('mitra_avatar_custom');
+          localStorage.removeItem('mitra_custom_avatar');
+          localStorage.removeItem('mitra_companion_asset');
+        }
+      }
+    } catch (e) {
+      console.warn('[ContextStore] Non-critical localStorage avatar set skipped:', e);
+    }
     this.saveState();
-    eventBus.emit('avatar.changed', { avatar: avatarDataUrl });
+    try {
+      eventBus.emit('avatar.changed', { avatar: avatarDataUrl });
+    } catch (e) {
+      console.error('[ContextStore] Failed to emit avatar.changed:', e);
+    }
   }
 
   getAvatar() {
-    return this.state.avatar || null;
+    return this.state.avatar || (typeof localStorage !== 'undefined' ? (localStorage.getItem('mitra_avatar_custom') || localStorage.getItem('mitra_custom_avatar') || localStorage.getItem('mitra_avatar_data_url')) : null);
   }
 
   // ─── Window State ────────────────────────────────────────────────────────────

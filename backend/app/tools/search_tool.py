@@ -394,7 +394,7 @@ class SearchTool:
                             f"- {r.get('title')}: {self._clean_text(r.get('content', ''))}"
                             for r in results[:4]
                         ]
-                        return "Web Information Intelligence Summary:\n" + "\n".join(snippets)
+                        return "\n".join(snippets)
         except Exception as e:
             logger.warning("Tavily API call failed: %s", e)
         return None
@@ -417,7 +417,7 @@ class SearchTool:
                             f"- {r.get('title')}: {self._clean_text(r.get('content', ''))}"
                             for r in results[:4]
                         ]
-                        return "Web Information Intelligence Summary:\n" + "\n".join(snippets)
+                        return "\n".join(snippets)
         except Exception as e:
             logger.warning("SearXNG search call failed (%s): %s", base_url, e)
         return None
@@ -440,7 +440,7 @@ class SearchTool:
                         if text:
                             snippets.append(f"- {text}")
                     if snippets:
-                        return "Web Information Intelligence Summary:\n" + "\n".join(snippets)
+                        return "\n".join(snippets)
         except Exception as e:
             logger.warning("DuckDuckGo search failed: %s", e)
         return None

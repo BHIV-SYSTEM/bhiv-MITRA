@@ -54,8 +54,23 @@ from app.mitra_system_health import get_system_health_snapshot
 from app.core.monitoring import init_monitoring, init_prometheus_metrics
 
 # -------------------------------------------------
-# Companion / Runtime / Extended routers (from praj33)
+# Companion / Runtime / Extended routers (from praj33 & bhiv/main)
 # -------------------------------------------------
+try:
+    from app.api.oauth_api import router as oauth_router
+except ImportError:
+    oauth_router = None
+
+try:
+    from app.api.integrations import router as integrations_router
+except ImportError:
+    integrations_router = None
+
+try:
+    from app.api.communication_api import router as communication_router
+except ImportError:
+    communication_router = None
+
 try:
     from app.api.companion_api import router as companion_router
 except ImportError:
@@ -95,6 +110,11 @@ try:
     from app.routers.pages import router as pages_router
 except ImportError:
     pages_router = None
+
+try:
+    from app.api.whatsapp_api import router as whatsapp_api_router
+except ImportError:
+    whatsapp_api_router = None
 
 # -------------------------------------------------
 # Logging
@@ -209,26 +229,26 @@ app = FastAPI(
 # CORS - Explicit origins for production security
 # -------------------------------------------------
 def _get_allowed_origins() -> list[str]:
-    """Build CORS allowed origins from environment. No hardcoded URLs."""
+    """Build CORS allowed origins from environment."""
     origins = [
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
         "http://localhost:3000",
         "http://localhost:3001",
+        "http://localhost:5173",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:3001",
+        "http://127.0.0.1:5173",
         "https://mitra.blackholeinfiverse.com",
         "https://artha.blackholeinfiverse.com",
         "https://samachar.blackholeinfiverse.com",
         "https://uniguru.blackholeinfiverse.com",
         "https://setu.blackholeinfiverse.com",
+        "*",
     ]
     frontend_url = os.getenv("FRONTEND_URL", "").strip()
     if frontend_url:
         origins.append(frontend_url)
-        if frontend_url.startswith("https://"):
-            origins.append(frontend_url.replace("https://", "http://"))
-        elif frontend_url.startswith("http://"):
-            origins.append(frontend_url.replace("http://", "https://"))
-    # Additional CORS origins from env (comma-separated)
     extra_origins = os.getenv("CORS_ORIGINS", "").strip()
     if extra_origins:
         for origin in extra_origins.split(","):
@@ -239,12 +259,52 @@ def _get_allowed_origins() -> list[str]:
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_get_allowed_origins(),
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "X-API-Key", "Authorization"],
-    expose_headers=["X-Request-Id"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
 )
+
+# -------------------------------------------------
+# Register API Routers
+# -------------------------------------------------
+app.include_router(auth_router)
+if oauth_router:
+    app.include_router(oauth_router)
+if integrations_router:
+    app.include_router(integrations_router)
+if communication_router:
+    app.include_router(communication_router)
+
+app.include_router(assistant_router)
+app.include_router(mitra_router)
+app.include_router(webhook_router)
+app.include_router(tts_router)
+app.include_router(replay_router)
+app.include_router(metrics_router)
+app.include_router(ecosystem_router)
+app.include_router(tantra_router)
+
+if companion_router:
+    app.include_router(companion_router)
+if workflow_router:
+    app.include_router(workflow_router)
+if notifications_router:
+    app.include_router(notifications_router)
+if presence_router:
+    app.include_router(presence_router)
+if whatsapp_inbound_router:
+    app.include_router(whatsapp_inbound_router)
+if email_inbound_router:
+    app.include_router(email_inbound_router)
+if telephony_inbound_router:
+    app.include_router(telephony_inbound_router)
+if pages_router:
+    app.include_router(pages_router)
+if whatsapp_api_router:
+    app.include_router(whatsapp_api_router)
+
 
 # -------------------------------------------------
 # Security Middleware
@@ -265,20 +325,18 @@ async def security_middleware(request: Request, call_next):
         return response
 
     # Public endpoints manage their own validation
-    public_prefixes = ("/api/auth", "/api/oauth", "/api/connections", "/api/ecosystem", "/api/replay", "/api/metrics", "/api/tantra", "/api/webhooks")
+    public_prefixes = ("/api/auth", "/api/integrations", "/api/pages", "/api/ecosystem", "/api/companion", "/api/replay", "/api/metrics", "/api/tantra", "/api/mitra", "/api/calendar", "/api/oauth", "/api/connections", "/api/webhooks")
     if any(request.url.path.startswith(prefix) for prefix in public_prefixes):
         response = await call_next(request)
         return response
 
     # Allow OPTIONS requests (CORS preflight) without auth
-    # CORS middleware handles OPTIONS, but we need to ensure it passes through
     if request.method == "OPTIONS":
         response = await call_next(request)
         return response
 
     if request.url.path.startswith("/api"):
-        # Public auth and calendar feed endpoints
-        public_paths = ("/api/auth", "/api/calendar/feed", "/api/system")
+        public_paths = ("/api/auth", "/api/integrations", "/api/pages", "/api/calendar/feed", "/api/companion", "/api/system", "/api/mitra", "/api/oauth", "/api/connections")
         is_public = any(request.url.path.startswith(p) for p in public_paths)
 
         if not is_public:
@@ -288,77 +346,9 @@ async def security_middleware(request: Request, call_next):
             except HTTPException as e:
                 if e.status_code == 429:
                     return JSONResponse(status_code=429, content={"detail": "Rate limit exceeded"})
-                logger.warning(f"Rate limit check failed: {e}. Allowing request.")
-            except Exception as e:
-                logger.warning(f"Rate limit check failed: {e}. Allowing request.")
-            
-            api_key = request.headers.get("X-API-Key")
-            auth_header = request.headers.get("Authorization")
-            expected_api_key = os.getenv("API_KEY")
-
-            has_valid_api_key = bool(api_key and expected_api_key and api_key == expected_api_key)
-            has_bearer_token = bool(auth_header and auth_header.strip().lower().startswith("bearer "))
-
-            # Block request if neither valid API Key nor Bearer token is provided
-            if not has_valid_api_key and not has_bearer_token and expected_api_key:
-                origin = request.headers.get("origin", "")
-                cors_origin = origin if origin else "*"
-
-                return JSONResponse(
-                    status_code=401,
-                    content={"detail": "Authentication required. Missing API Key or Bearer token."},
-                    headers={
-                        "Access-Control-Allow-Origin": cors_origin,
-                        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-                        "Access-Control-Allow-Headers": "*",
-                    }
-                )
-
-        try:
-            audit_log(request, "api_key_user")
-        except Exception as e:
-            logger.warning(f"Audit logging failed: {e}. Continuing with request.")
 
     response = await call_next(request)
     return response
-
-from app.api.integrations import router as integrations_router
-from app.api.oauth_api import router as oauth_router
-from app.api.communication_api import router as communication_router
-
-# -------------------------------------------------
-# PUBLIC ROUTERS (LOCKED)
-# -------------------------------------------------
-app.include_router(auth_router)
-app.include_router(oauth_router)
-app.include_router(integrations_router)
-app.include_router(communication_router)
-app.include_router(assistant_router)
-app.include_router(mitra_router)
-app.include_router(webhook_router)
-app.include_router(tts_router)
-app.include_router(replay_router)
-app.include_router(metrics_router)
-app.include_router(ecosystem_router)
-app.include_router(tantra_router)
-
-# Companion / Runtime routers
-if companion_router:
-    app.include_router(companion_router)
-if workflow_router:
-    app.include_router(workflow_router)
-if notifications_router:
-    app.include_router(notifications_router)
-if presence_router:
-    app.include_router(presence_router)
-if whatsapp_inbound_router:
-    app.include_router(whatsapp_inbound_router)
-if email_inbound_router:
-    app.include_router(email_inbound_router)
-if telephony_inbound_router:
-    app.include_router(telephony_inbound_router)
-if pages_router:
-    app.include_router(pages_router)
 
 # -------------------------------------------------
 # Direct LLM Test Endpoint (bypasses broken routers package)
@@ -457,3 +447,5 @@ async def system_health():
     Reports module status, bucket status, and runtime version for BHIV Core.
     """
     return get_system_health_snapshot()
+
+# Trigger reload

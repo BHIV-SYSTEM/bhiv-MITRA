@@ -9,13 +9,13 @@ export class DockController {
     this.element.className = 'mitra-dock-controls';
     this.element.innerHTML = `
       <button class="mitra-btn" data-dock="left" title="Dock Left">
-        <svg viewBox="0 0 24 24"><path d="M3 3h8v18H3zM13 3h8v18h-8z"/></svg>
+        <svg viewBox="0 0 24 24"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
       </button>
       <button class="mitra-btn" data-dock="floating" title="Floating">
         <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>
       </button>
       <button class="mitra-btn" data-dock="right" title="Dock Right">
-        <svg viewBox="0 0 24 24"><path d="M13 3h8v18h-8zM3 3h8v18H3z"/></svg>
+        <svg viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
       </button>
     `;
 
@@ -52,29 +52,10 @@ export class DockController {
     } else {
       this.shell.classList.add('floating');
       clearPositionStyles();
-      const lastPos = contextStore.getPosition();
-      if (lastPos && lastPos.left != null && lastPos.top != null) {
-        const parsedLeft = parseFloat(lastPos.left);
-        const parsedTop = parseFloat(lastPos.top);
-        if (!isNaN(parsedLeft) && !isNaN(parsedTop)) {
-          const safeLeft = Math.min(Math.max(0, parsedLeft), Math.max(0, window.innerWidth - 80));
-          const safeTop = Math.min(Math.max(0, parsedTop), Math.max(0, window.innerHeight - 80));
-          this.shell.style.left = `${safeLeft}px`;
-          this.shell.style.top = `${safeTop}px`;
-          this.shell.style.bottom = 'auto';
-          this.shell.style.right = 'auto';
-        } else {
-          this.shell.style.bottom = '24px';
-          this.shell.style.right = '24px';
-          this.shell.style.top = 'auto';
-          this.shell.style.left = 'auto';
-        }
-      } else {
-        this.shell.style.bottom = '24px';
-        this.shell.style.right = '24px';
-        this.shell.style.top = 'auto';
-        this.shell.style.left = 'auto';
-      }
+      this.shell.style.bottom = '24px';
+      this.shell.style.right = '24px';
+      this.shell.style.top = 'auto';
+      this.shell.style.left = 'auto';
       this.shell.style.position = 'fixed';
     }
 
