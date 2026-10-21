@@ -204,9 +204,63 @@ If the user is not logged in with a full account:
 
 ---
 
-## 7. Verification Checklist for Partner Teams
+## 7. Header Controls & Window Minimization Standard
+
+To maintain a unified, uncluttered user experience across all portals:
+- The chatbot window header contains a single **Minimize** (`_`) button with ID `#btn-minimize`.
+- The close (`✕`) button has been intentionally deprecated and removed from the header to prevent user confusion between minimizing vs. destroying session state.
+- Clicking `#btn-minimize` transitions `.mitra-window` to `display: none` and `opacity: 0`, and resets the companion custom element host to `pointer-events: none` so underlying page content is completely unblocked.
+- Clicking the host trigger button (or calling `window.__MITRA_TOGGLE_ORB__()`) immediately expands the window and restores focus to the input box.
+
+---
+
+## 8. Ready-To-Use Prompts for Developers & AI Assistants
+
+Copy and paste these exact prompts into Antigravity, Claude, ChatGPT, or Cursor to immediately implement or test the MITRA companion chatbot without manual setup.
+
+### Prompt A: Quick Floating Orb Integration (Bottom-Right Mode)
+```markdown
+Integrate the MITRA AI Companion floating orb into this project.
+Requirements:
+1. Add <mitra-companion api-base-url="https://mitra.blackholeinfiverse.com" stylesheet-path="/styles/mitra-companion.css"></mitra-companion> and <script type="module" src="/src/mitra-companion.js"></script> to index.html.
+2. Ensure the bottom-right floating orb launcher renders cleanly with z-index 999999.
+3. Ensure clicking the orb expands the MITRA chatbot window, and clicking the header minimize button (_) collapses it cleanly.
+4. Verify guest authentication works automatically by querying "Hello Mitra" without requiring prior manual login.
+```
+
+### Prompt B: TopBar / Navbar Trigger Integration (Headless Mode)
+```markdown
+Integrate the MITRA AI Companion into our top navigation bar next to Search, with NO floating orb at the bottom-right.
+Requirements:
+1. In index.html, mount <mitra-companion hide-fab="true" api-base-url="https://mitra.blackholeinfiverse.com" stylesheet-path="/styles/mitra-companion.css"></mitra-companion> with stylesheet and script tags.
+2. In the TopBar component next to the Search input, add a companion avatar trigger button.
+3. On trigger button onClick, call window.__MITRA_TOGGLE_ORB__() or dispatch custom event "mitra:toggle-orb".
+4. Ensure the chatbot header has only the minimize button (_) and that minimizing sets pointer-events: none on the custom element so underlying page clicks are never blocked.
+```
+
+### Prompt C: End-to-End Verification & QA Test
+```markdown
+Test and verify the MITRA AI Companion chatbot on http://localhost:8080/ (or our local dev server):
+1. Check that NO floating launcher button is visible in the bottom-right corner when hide-fab="true" is set.
+2. Click the TopBar companion avatar button and verify that .mitra-window expands smoothly to 400x650px.
+3. In the chatbot header, confirm only the minimize button (#btn-minimize) is present, and click it to ensure the window minimizes cleanly without errors.
+4. Re-open the chatbot, send a test question "What is the status of my tasks?", and verify that the message auto-scrolls smoothly to the bottom and receives a live response from https://mitra.blackholeinfiverse.com.
+```
+
+### Prompt D: Troubleshooting Infinite Event Loops & Shadow DOM Clicks
+```markdown
+Audit and fix any issues with the MITRA companion integration in this repo:
+1. Check event listeners on "mitra:avatar-changed" and "mitra:orb-state-changed" to ensure no recursive state dispatching freezes the main thread.
+2. Verify that pointer-events on <mitra-companion> is set to "none" when minimized, and "auto" only on interactive elements (.mitra-window, #mitra-fab) when open.
+3. Verify that the chatbot chat container (.mitra-chat) has min-height: 0 !important; and overflow-y: auto !important; with sleek custom dark scrollbar styles.
+```
+
+---
+
+## 9. Verification Checklist for Partner Teams
 
 1. **Mount Verification**: Inspect DOM; confirm `<mitra-companion>` is present.
 2. **Network Request Check**: Type `"Hello Mitra"` in the companion input. Verify in Network tab that `POST https://mitra.blackholeinfiverse.com/api/companion/chat` returns `HTTP 200`.
 3. **Trigger Verification**: If `hide-fab="true"` is set, ensure your custom button calls `window.__MITRA_TOGGLE_ORB__()` and the window animates open.
-4. **CORS Check**: Ensure your domain is allowed by the MITRA backend (all `*.blackholeinfiverse.com` and `localhost` domains are pre-authorized).
+4. **Header Check**: Confirm only `#btn-minimize` is visible in the header controls and that clicking it cleanly collapses the window.
+5. **CORS Check**: Ensure your domain is allowed by the MITRA backend (all `*.blackholeinfiverse.com` and `localhost` domains are pre-authorized).
