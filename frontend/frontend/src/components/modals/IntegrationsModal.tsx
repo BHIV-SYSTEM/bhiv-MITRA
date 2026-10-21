@@ -200,7 +200,7 @@ export const IntegrationsModal: React.FC<IntegrationsModalProps> = ({ isOpen, on
         const waRes = await fetch(`${API_BASE}/api/whatsapp/business/status`, { headers: getAuthHeaders() });
         if (waRes.ok) {
           const waData = await waRes.json();
-          if (waData.status === 'connected') {
+          if (waData.status === 'connected' && waData.source === 'user_connected_account') {
             setWaBusinessConnected(true);
             setWaBusinessPhone(waData.display_phone_number || waData.phone_number_id || '');
             setWaBusinessWabaId(waData.waba_id || '');
@@ -211,6 +211,7 @@ export const IntegrationsModal: React.FC<IntegrationsModalProps> = ({ isOpen, on
             setWaBusinessPhone('');
             setWaBusinessWabaId('');
             setWaVerifiedName('');
+            setWaCoexistenceMode(false);
           }
         }
       } catch (e) {
@@ -566,7 +567,7 @@ export const IntegrationsModal: React.FC<IntegrationsModalProps> = ({ isOpen, on
 
     window.addEventListener('message', handleMetaMessage);
 
-    const handleFbLoginCallback = (response: any) => {
+    function handleFbLoginCallback(response: any) {
       window.removeEventListener('message', handleMetaMessage);
 
       if (response && response.authResponse && response.authResponse.code) {
@@ -585,18 +586,19 @@ export const IntegrationsModal: React.FC<IntegrationsModalProps> = ({ isOpen, on
             phone_number_id: sessionPhoneId
           })
         })
-          .then(async (exchangeRes) => {
-            const data = await exchangeRes.json();
-            if (exchangeRes.ok && data.status === 'connected') {
-              setWaBusinessConnected(true);
-              setWaBusinessPhone(data.display_phone_number || data.phone_number_id || '');
-              setWaBusinessWabaId(data.waba_id || '');
-              setWaVerifiedName(data.verified_name || '');
-              setWaCoexistenceMode(Boolean(data.coexistence_mode));
-              setStatusMessage(`WhatsApp Business Connected (${data.display_phone_number || 'Coexistence Active'})`);
-            } else {
-              setErrorMessage(data.detail || data.message || "Failed to exchange Meta authorization code.");
-            }
+          .then((exchangeRes) => {
+            return exchangeRes.json().then((data) => {
+              if (exchangeRes.ok && data.status === 'connected') {
+                setWaBusinessConnected(true);
+                setWaBusinessPhone(data.display_phone_number || data.phone_number_id || '');
+                setWaBusinessWabaId(data.waba_id || '');
+                setWaVerifiedName(data.verified_name || '');
+                setWaCoexistenceMode(Boolean(data.coexistence_mode));
+                setStatusMessage(`WhatsApp Business Connected (${data.display_phone_number || 'Coexistence Active'})`);
+              } else {
+                setErrorMessage(data.detail || data.message || "Failed to exchange Meta authorization code.");
+              }
+            });
           })
           .catch((err: any) => {
             setErrorMessage(err.message || "Network error exchanging Meta authorization code.");
@@ -612,7 +614,7 @@ export const IntegrationsModal: React.FC<IntegrationsModalProps> = ({ isOpen, on
           setErrorMessage("Meta authorization was not completed.");
         }
       }
-    };
+    }
 
     try {
       (window as any).FB.login(
@@ -1140,9 +1142,11 @@ export const IntegrationsModal: React.FC<IntegrationsModalProps> = ({ isOpen, on
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <h3 className="font-semibold text-gray-200 text-sm sm:text-base">WhatsApp Business</h3>
-                    <span className="px-2 py-0.5 text-[10px] font-semibold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 rounded-full">
-                      Coexistence Active
-                    </span>
+                    {waBusinessConnected && waCoexistenceMode && (
+                      <span className="px-2 py-0.5 text-[10px] font-semibold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 rounded-full">
+                        Coexistence Active
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-gray-400">Official Meta Cloud API • Keep your mobile app active</p>
                 </div>

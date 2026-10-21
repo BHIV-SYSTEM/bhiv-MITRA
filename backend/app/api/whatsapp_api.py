@@ -395,13 +395,14 @@ async def get_business_whatsapp_status(
     client = MetaWhatsAppExecutor()
     creds = client.get_credentials(user_id=user_id)
 
-    has_token = bool(creds.get("access_token"))
-    has_phone_id = bool(creds.get("phone_number_id"))
-    is_connected = has_token and has_phone_id and creds.get("source") != "none"
-
     from app.services.connected_account_service import connected_account_service
     conn = connected_account_service.get_user_connection(user_id, "whatsapp_business", include_decrypted_tokens=False)
     extra = (conn.get("extra_data") or {}) if conn else {}
+
+    is_user_conn = bool(conn and conn.get("status") in ("connected", "active"))
+    has_token = bool(creds.get("access_token"))
+    has_phone_id = bool(creds.get("phone_number_id"))
+    is_connected = is_user_conn or (has_token and has_phone_id and creds.get("source") == "user_connected_account")
 
     # Mask token for security
     token = creds.get("access_token") or ""
