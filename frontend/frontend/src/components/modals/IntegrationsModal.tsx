@@ -566,53 +566,57 @@ export const IntegrationsModal: React.FC<IntegrationsModalProps> = ({ isOpen, on
 
     window.addEventListener('message', handleMetaMessage);
 
+    const handleFbLoginCallback = (response: any) => {
+      window.removeEventListener('message', handleMetaMessage);
+
+      if (response && response.authResponse && response.authResponse.code) {
+        const authCode = response.authResponse.code;
+        setStatusMessage("Securely validating credentials and establishing Coexistence...");
+        
+        fetch(`${API_BASE}/api/whatsapp/embedded-signup/exchange`, {
+          method: 'POST',
+          headers: {
+            ...getAuthHeaders(),
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            code: authCode,
+            waba_id: sessionWabaId,
+            phone_number_id: sessionPhoneId
+          })
+        })
+          .then(async (exchangeRes) => {
+            const data = await exchangeRes.json();
+            if (exchangeRes.ok && data.status === 'connected') {
+              setWaBusinessConnected(true);
+              setWaBusinessPhone(data.display_phone_number || data.phone_number_id || '');
+              setWaBusinessWabaId(data.waba_id || '');
+              setWaVerifiedName(data.verified_name || '');
+              setWaCoexistenceMode(Boolean(data.coexistence_mode));
+              setStatusMessage(`WhatsApp Business Connected (${data.display_phone_number || 'Coexistence Active'})`);
+            } else {
+              setErrorMessage(data.detail || data.message || "Failed to exchange Meta authorization code.");
+            }
+          })
+          .catch((err: any) => {
+            setErrorMessage(err.message || "Network error exchanging Meta authorization code.");
+          })
+          .finally(() => {
+            setIsConnectingWaBusiness(false);
+          });
+      } else {
+        setIsConnectingWaBusiness(false);
+        if (response && response.status === 'unknown') {
+          setErrorMessage("Meta onboarding window was closed without completing.");
+        } else {
+          setErrorMessage("Meta authorization was not completed.");
+        }
+      }
+    };
+
     try {
       (window as any).FB.login(
-        async (response: any) => {
-          window.removeEventListener('message', handleMetaMessage);
-
-          if (response.authResponse && response.authResponse.code) {
-            const authCode = response.authResponse.code;
-            setStatusMessage("Securely validating credentials and establishing Coexistence...");
-            try {
-              const exchangeRes = await fetch(`${API_BASE}/api/whatsapp/embedded-signup/exchange`, {
-                method: 'POST',
-                headers: {
-                  ...getAuthHeaders(),
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                  code: authCode,
-                  waba_id: sessionWabaId,
-                  phone_number_id: sessionPhoneId
-                })
-              });
-
-              const data = await exchangeRes.json();
-              if (exchangeRes.ok && data.status === 'connected') {
-                setWaBusinessConnected(true);
-                setWaBusinessPhone(data.display_phone_number || data.phone_number_id || '');
-                setWaBusinessWabaId(data.waba_id || '');
-                setWaVerifiedName(data.verified_name || '');
-                setWaCoexistenceMode(Boolean(data.coexistence_mode));
-                setStatusMessage(`WhatsApp Business Connected (${data.display_phone_number || 'Coexistence Active'})`);
-              } else {
-                setErrorMessage(data.detail || data.message || "Failed to exchange Meta authorization code.");
-              }
-            } catch (err: any) {
-              setErrorMessage(err.message || "Network error exchanging Meta authorization code.");
-            } finally {
-              setIsConnectingWaBusiness(false);
-            }
-          } else {
-            setIsConnectingWaBusiness(false);
-            if (response.status === 'unknown') {
-              setErrorMessage("Meta onboarding window was closed without completing.");
-            } else {
-              setErrorMessage("Meta authorization was not completed.");
-            }
-          }
-        },
+        handleFbLoginCallback,
         {
           config_id: '1600310887693339',
           response_type: 'code',
