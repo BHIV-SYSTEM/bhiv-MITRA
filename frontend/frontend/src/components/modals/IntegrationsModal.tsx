@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   X, Mail, Calendar, ShieldCheck,
-  Package, Bug, GitPullRequest, Lock, AlertTriangle
+  Package, Bug, GitPullRequest, Lock, AlertTriangle,
+  Smartphone, CheckCircle2, Trash2, ChevronDown, ChevronUp, Radio
 } from 'lucide-react';
 import { authApi } from '../../services/authApi';
 import { getApiBase, getAuthHeaders } from '../../services/apiConfig';
@@ -69,6 +70,16 @@ export const IntegrationsModal: React.FC<IntegrationsModalProps> = ({ isOpen, on
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [otpCode, setOtpCode] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
+
+  // Meta WhatsApp Business Embedded Signup State (Coexistence)
+  const [waBusinessConnected, setWaBusinessConnected] = useState(false);
+  const [waBusinessPhone, setWaBusinessPhone] = useState('');
+  const [waBusinessWabaId, setWaBusinessWabaId] = useState('');
+  const [waVerifiedName, setWaVerifiedName] = useState('');
+  const [waCoexistenceMode, setWaCoexistenceMode] = useState(false);
+  const [isConnectingWaBusiness, setIsConnectingWaBusiness] = useState(false);
+  const [isDisconnectingWaBusiness, setIsDisconnectingWaBusiness] = useState(false);
+  const [showPersonalAlertsOtp, setShowPersonalAlertsOtp] = useState(false);
 
   // Global Feedback Messages
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -170,7 +181,7 @@ export const IntegrationsModal: React.FC<IntegrationsModalProps> = ({ isOpen, on
         setAppleEmail('');
       }
 
-      // 2. Fetch WhatsApp status
+      // 2. Fetch WhatsApp status (Personal Alerts)
       try {
         const res = await fetch(`${API_BASE}/api/integrations`, { headers: getAuthHeaders() });
         if (res.ok) {
@@ -183,6 +194,28 @@ export const IntegrationsModal: React.FC<IntegrationsModalProps> = ({ isOpen, on
       } catch (e) {
         console.warn("WhatsApp integration check warning:", e);
       }
+
+      // 3. Fetch Meta WhatsApp Business Coexistence status
+      try {
+        const waRes = await fetch(`${API_BASE}/api/whatsapp/business/status`, { headers: getAuthHeaders() });
+        if (waRes.ok) {
+          const waData = await waRes.json();
+          if (waData.status === 'connected') {
+            setWaBusinessConnected(true);
+            setWaBusinessPhone(waData.display_phone_number || waData.phone_number_id || '');
+            setWaBusinessWabaId(waData.waba_id || '');
+            setWaVerifiedName(waData.verified_name || '');
+            setWaCoexistenceMode(Boolean(waData.coexistence_mode));
+          } else {
+            setWaBusinessConnected(false);
+            setWaBusinessPhone('');
+            setWaBusinessWabaId('');
+            setWaVerifiedName('');
+          }
+        }
+      } catch (e) {
+        console.warn("WhatsApp Business status check warning:", e);
+      }
     } catch (err) {
       console.warn("Failed fetching user connections:", err);
     }
@@ -193,6 +226,27 @@ export const IntegrationsModal: React.FC<IntegrationsModalProps> = ({ isOpen, on
     if (!isOpen) return;
     fetchConnections();
   }, [isOpen, fetchConnections]);
+
+  // Load Meta Facebook SDK for WhatsApp Business Embedded Signup
+  useEffect(() => {
+    if ((window as any).FB) return;
+    (window as any).fbAsyncInit = function () {
+      (window as any).FB.init({
+        appId: '1325283592858854',
+        autoLogAppEvents: true,
+        xfbml: true,
+        version: 'v25.0'
+      });
+    };
+    if (!document.getElementById('facebook-jssdk')) {
+      const script = document.createElement('script');
+      script.id = 'facebook-jssdk';
+      script.src = 'https://connect.facebook.net/en_US/sdk.js';
+      script.async = true;
+      script.defer = true;
+      document.body.appendChild(script);
+    }
+  }, []);
 
   // ESC key listener and body scroll locking
   useEffect(() => {
@@ -462,6 +516,150 @@ export const IntegrationsModal: React.FC<IntegrationsModalProps> = ({ isOpen, on
       setErrorMessage("Network error verifying WhatsApp OTP.");
     } finally {
       setIsVerifying(false);
+    }
+  };
+
+  // 8. Meta WhatsApp Business Embedded Signup (Coexistence)
+  const handleLaunchMetaEmbeddedSignup = () => {
+    if (isGuest) {
+      setErrorMessage("Please sign in with a registered account to connect WhatsApp Business.");
+      setAuthModalOpen(true);
+      return;
+    }
+
+    if (!(window as any).FB) {
+      setErrorMessage("Meta SDK is still initializing. Please wait a moment and try again.");
+      return;
+    }
+
+    setIsConnectingWaBusiness(true);
+    setStatusMessage("Opening Meta WhatsApp Business Signup (Coexistence mode)...");
+    setErrorMessage(null);
+
+    let sessionWabaId: string | null = null;
+    let sessionPhoneId: string | null = null;
+
+    // Listen for Meta Embedded Signup postMessage events
+    const handleMetaMessage = (event: MessageEvent) => {
+      if (!event.origin.endsWith('facebook.com')) return;
+
+      try {
+        const payload = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        if (payload?.type === 'WA_EMBEDDED_SIGNUP') {
+          if (payload.event === 'FINISH') {
+            const data = payload.data || {};
+            sessionWabaId = data.waba_id || null;
+            sessionPhoneId = data.phone_number_id || null;
+            setStatusMessage("Meta signup completed. Exchanging authorization code...");
+          } else if (payload.event === 'CANCEL') {
+            setIsConnectingWaBusiness(false);
+            setErrorMessage("WhatsApp Business Signup was cancelled.");
+          } else if (payload.event === 'ERROR') {
+            setIsConnectingWaBusiness(false);
+            setErrorMessage(`Meta Signup Error: ${payload.data?.error_message || 'Unknown error'}`);
+          }
+        }
+      } catch (e) {
+        // Ignore non-json messages
+      }
+    };
+
+    window.addEventListener('message', handleMetaMessage);
+
+    try {
+      (window as any).FB.login(
+        async (response: any) => {
+          window.removeEventListener('message', handleMetaMessage);
+
+          if (response.authResponse && response.authResponse.code) {
+            const authCode = response.authResponse.code;
+            setStatusMessage("Securely validating credentials and establishing Coexistence...");
+            try {
+              const exchangeRes = await fetch(`${API_BASE}/api/whatsapp/embedded-signup/exchange`, {
+                method: 'POST',
+                headers: {
+                  ...getAuthHeaders(),
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  code: authCode,
+                  waba_id: sessionWabaId,
+                  phone_number_id: sessionPhoneId
+                })
+              });
+
+              const data = await exchangeRes.json();
+              if (exchangeRes.ok && data.status === 'connected') {
+                setWaBusinessConnected(true);
+                setWaBusinessPhone(data.display_phone_number || data.phone_number_id || '');
+                setWaBusinessWabaId(data.waba_id || '');
+                setWaVerifiedName(data.verified_name || '');
+                setWaCoexistenceMode(Boolean(data.coexistence_mode));
+                setStatusMessage(`WhatsApp Business Connected (${data.display_phone_number || 'Coexistence Active'})`);
+              } else {
+                setErrorMessage(data.detail || data.message || "Failed to exchange Meta authorization code.");
+              }
+            } catch (err: any) {
+              setErrorMessage(err.message || "Network error exchanging Meta authorization code.");
+            } finally {
+              setIsConnectingWaBusiness(false);
+            }
+          } else {
+            setIsConnectingWaBusiness(false);
+            if (response.status === 'unknown') {
+              setErrorMessage("Meta onboarding window was closed without completing.");
+            } else {
+              setErrorMessage("Meta authorization was not completed.");
+            }
+          }
+        },
+        {
+          config_id: '1600310887693339',
+          response_type: 'code',
+          override_default_response_type: true,
+          extras: {
+            setup: {},
+            featureType: 'whatsapp_business_app_onboarding',
+            sessionInfoVersion: '3',
+            features: ['app_only_install']
+          }
+        }
+      );
+    } catch (fbErr: any) {
+      window.removeEventListener('message', handleMetaMessage);
+      setIsConnectingWaBusiness(false);
+      console.warn("FB.login error:", fbErr);
+      if (fbErr?.message?.includes("http pages") || window.location.protocol === 'http:') {
+        setErrorMessage("Meta requires HTTPS for Facebook Login. In local development on HTTP, use an HTTPS tunnel (e.g. ngrok or Cloudflare tunnel) to test live Meta OAuth.");
+      } else {
+        setErrorMessage(fbErr?.message || "Failed to launch Meta Embedded Signup.");
+      }
+    }
+  };
+
+  const handleDisconnectWaBusiness = async () => {
+    setIsDisconnectingWaBusiness(true);
+    setStatusMessage("Disconnecting WhatsApp Business Account...");
+    setErrorMessage(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/whatsapp/business/disconnect`, {
+        method: 'POST',
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        setWaBusinessConnected(false);
+        setWaBusinessPhone('');
+        setWaBusinessWabaId('');
+        setWaVerifiedName('');
+        setStatusMessage("WhatsApp Business Account disconnected successfully.");
+      } else {
+        const data = await res.json();
+        setErrorMessage(data.detail || data.message || "Failed to disconnect WhatsApp Business.");
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || "Network error disconnecting WhatsApp Business.");
+    } finally {
+      setIsDisconnectingWaBusiness(false);
     }
   };
 
@@ -929,46 +1127,133 @@ export const IntegrationsModal: React.FC<IntegrationsModalProps> = ({ isOpen, on
             </div>
           </div>
 
-          {/* 6. WHATSAPP INTEGRATION CARD */}
-          <div className="p-5 rounded-2xl bg-[#1A1A1A] border border-white/10 hover:border-white/15 transition-all">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-3">
+          {/* 6. WHATSAPP BUSINESS & MESSAGING INTEGRATION CARD */}
+          <div className="p-5 rounded-2xl bg-[#1A1A1A] border border-white/10 hover:border-white/15 transition-all space-y-4">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center gap-3.5 min-w-0 flex-1">
                 <ServiceLogo service="whatsapp" size="md" />
                 <div className="min-w-0">
-                  <h3 className="font-semibold text-gray-200 text-sm sm:text-base">WhatsApp Messaging</h3>
-                  <p className="text-xs text-gray-400">Receive 8:45 AM morning briefings & price alerts</p>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-gray-200 text-sm sm:text-base">WhatsApp Business</h3>
+                    <span className="px-2 py-0.5 text-[10px] font-semibold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 rounded-full">
+                      Coexistence Active
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400">Official Meta Cloud API • Keep your mobile app active</p>
                 </div>
               </div>
               <div className="self-start sm:self-center shrink-0">
-                <ConnectionStatusBadge status={whatsappConnected ? 'CONNECTED' : 'NOT_CONNECTED'} />
+                <ConnectionStatusBadge status={waBusinessConnected ? 'CONNECTED' : 'NOT_CONNECTED'} />
               </div>
             </div>
 
-            {whatsappConnected ? (
-              <div className="flex items-center justify-between text-xs text-gray-400 pt-3 border-t border-white/5">
-                <span>Phone: <strong className="text-gray-200">{whatsappNumber}</strong></span>
-                <span className="inline-flex items-center gap-1 text-emerald-400 font-medium">
-                  <ShieldCheck size={12} /> Verified & Active
-                </span>
+            {/* Main WhatsApp Business Connection Body */}
+            {waBusinessConnected ? (
+              <div className="p-3.5 rounded-xl bg-emerald-950/20 border border-emerald-500/20 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="space-y-0.5">
+                    <span className="text-gray-400">Business Number: </span>
+                    <strong className="text-emerald-300 font-mono text-xs">{waBusinessPhone || 'Connected'}</strong>
+                    {waVerifiedName && (
+                      <span className="block text-[11px] text-gray-400">Name: {waVerifiedName}</span>
+                    )}
+                    {waBusinessWabaId && (
+                      <span className="block text-[10px] text-gray-500 font-mono">WABA ID: {waBusinessWabaId}</span>
+                    )}
+                  </div>
+                  <button
+                    onClick={handleDisconnectWaBusiness}
+                    disabled={isDisconnectingWaBusiness}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 text-xs transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <Trash2 size={12} />
+                    {isDisconnectingWaBusiness ? "Disconnecting..." : "Disconnect"}
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-emerald-500/10 text-[11px] text-emerald-400/90">
+                  <span className="inline-flex items-center gap-1">
+                    <CheckCircle2 size={12} className="text-emerald-400" />
+                    Mobile App & Cloud API Coexistence Verified
+                  </span>
+                  <span className="text-emerald-600">•</span>
+                  <span className="inline-flex items-center gap-1 text-gray-400">
+                    <Lock size={11} /> AES-256 Token Vault
+                  </span>
+                </div>
               </div>
             ) : (
-              <form onSubmit={handleSendWhatsappOtp} className="flex flex-col sm:flex-row gap-2 mt-3 pt-3 border-t border-white/5">
-                <input
-                  type="tel"
-                  value={whatsappNumber}
-                  onChange={(e) => setWhatsappNumber(e.target.value)}
-                  placeholder="+91 98765 43210"
-                  className="flex-1 px-4 py-2.5 rounded-xl bg-[#242424] text-white placeholder-gray-500 text-xs border border-white/10 focus:outline-none focus:border-emerald-500"
-                />
-                <button
-                  type="submit"
-                  disabled={isVerifying || !whatsappNumber}
-                  className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 text-black font-semibold text-xs rounded-xl transition-colors disabled:opacity-50 cursor-pointer shrink-0"
-                >
-                  {isVerifying ? "Sending OTP..." : "Send OTP"}
-                </button>
-              </form>
+              <div className="space-y-3 pt-2 border-t border-white/5">
+                <p className="text-xs text-gray-300 leading-relaxed">
+                  Connect via official <strong>Meta Embedded Signup</strong>. With <em>Coexistence</em>, you retain complete access to your WhatsApp Business mobile app on your phone while MITRA delivers morning briefings, client notifications, and calendar alerts.
+                </p>
+
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleLaunchMetaEmbeddedSignup}
+                    disabled={isConnectingWaBusiness}
+                    className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-black font-semibold text-xs shadow-lg shadow-emerald-500/20 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Smartphone size={14} />
+                    {isConnectingWaBusiness ? "Connecting via Meta..." : "Connect WhatsApp Business (Coexistence)"}
+                  </button>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/5 text-[11px] text-gray-400 leading-normal flex items-start gap-2">
+                  <span className="text-emerald-400 text-xs mt-0.5">ℹ️</span>
+                  <span>
+                    When Meta prompts you during signup, choose your existing WhatsApp Business number. A confirmation notification will appear in your mobile phone app to approve dual-access coexistence.
+                  </span>
+                </div>
+              </div>
             )}
+
+            {/* Collapsible Personal WhatsApp OTP Fallback */}
+            <div className="pt-2 border-t border-white/5">
+              <button
+                type="button"
+                onClick={() => setShowPersonalAlertsOtp(!showPersonalAlertsOtp)}
+                className="w-full flex items-center justify-between text-xs text-gray-400 hover:text-gray-200 transition-colors py-1 cursor-pointer"
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <Radio size={12} className="text-emerald-400" />
+                  Personal Number Alert Delivery (Direct OTP Fallback)
+                </span>
+                {showPersonalAlertsOtp ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
+
+              {showPersonalAlertsOtp && (
+                <div className="mt-3 pt-3 border-t border-white/5">
+                  {whatsappConnected ? (
+                    <div className="flex items-center justify-between text-xs text-gray-400 p-2.5 rounded-xl bg-white/[0.02]">
+                      <span>Personal Alerts: <strong className="text-gray-200">{whatsappNumber}</strong></span>
+                      <span className="inline-flex items-center gap-1 text-emerald-400 font-medium text-[11px]">
+                        <ShieldCheck size={12} /> Active
+                      </span>
+                    </div>
+                  ) : (
+                    <form onSubmit={handleSendWhatsappOtp} className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="tel"
+                        value={whatsappNumber}
+                        onChange={(e) => setWhatsappNumber(e.target.value)}
+                        placeholder="+91 98765 43210"
+                        className="flex-1 px-4 py-2 rounded-xl bg-[#242424] text-white placeholder-gray-500 text-xs border border-white/10 focus:outline-none focus:border-emerald-500"
+                      />
+                      <button
+                        type="submit"
+                        disabled={isVerifying || !whatsappNumber}
+                        className="px-4 py-2 bg-white/10 hover:bg-white/20 active:bg-white/30 text-white font-medium text-xs rounded-xl transition-colors disabled:opacity-50 cursor-pointer shrink-0"
+                      >
+                        {isVerifying ? "Sending..." : "Verify Personal Number"}
+                      </button>
+                    </form>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

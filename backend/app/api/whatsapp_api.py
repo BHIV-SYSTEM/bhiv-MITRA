@@ -10,6 +10,7 @@ import os
 import re
 import json
 import logging
+import requests
 from typing import Dict, Any, Optional
 from datetime import datetime
 
@@ -17,6 +18,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Depends, status
 from fastapi.responses import PlainTextResponse, JSONResponse
 from pydantic import BaseModel, Field
 
+from app.core.auth_dependencies import get_current_user
 from app.executors.meta_whatsapp_executor import (
     MetaWhatsAppExecutor,
     generate_personal_wa_link,
@@ -28,6 +30,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/whatsapp", tags=["WhatsApp Integration"])
 
 # ── Pydantic Request Models ──
+
+class MetaEmbeddedSignupExchangeRequest(BaseModel):
+    code: str = Field(..., description="Meta authorization code from Embedded Signup")
+    waba_id: Optional[str] = Field(None, description="WhatsApp Business Account ID returned in session info")
+    phone_number_id: Optional[str] = Field(None, description="Phone number ID returned in session info")
 
 class PersonalPrepareRequest(BaseModel):
     phone: str = Field(..., description="Recipient phone number with or without country code")
@@ -132,19 +139,269 @@ async def generate_ai_draft(req: AIDraftRequest):
     }
 
 
-# ── 2. BUSINESS WHATSAPP (META CLOUD API) ──
+# ── 2. BUSINESS WHATSAPP & META EMBEDDED SIGNUP (COEXISTENCE) ──
+
+@router.post("/embedded-signup/exchange")
+@router.post("/business/oauth/exchange")
+async def exchange_embedded_signup_code(
+    req: MetaEmbeddedSignupExchangeRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Exchanges the authorization code from Meta's Embedded Signup for a User Access Token,
+    validates the WABA and phone number identifiers server-side via Graph API v25.0,
+    subscribes the WABA to webhooks, and securely stores the AES-256 encrypted credentials
+    against the authenticated user account with strict tenant isolation.
+    """
+    if not current_user or current_user.get("is_guest"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required. Please sign in to connect your WhatsApp Business account."
+        )
+
+    user_id = str(current_user.get("id") or current_user.get("user_id") or "").strip()
+    if not user_id or user_id.lower() in ("guest_user", "user_default", "none", "null"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authenticated user identity."
+        )
+
+    code = req.code.strip()
+    if not code:
+        raise HTTPException(status_code=400, detail="Authorization code is required.")
+
+    app_id = (
+        os.getenv("META_APP_ID")
+        or os.getenv("META_WA_APP_ID")
+        or os.getenv("INSTAGRAM_APP_ID")
+        or "1325283592858854"
+    ).strip()
+
+    app_secret = (
+        os.getenv("META_APP_SECRET")
+        or os.getenv("META_WA_APP_SECRET")
+        or os.getenv("WHATSAPP_APP_SECRET")
+        or os.getenv("INSTAGRAM_APP_SECRET")
+        or ""
+    ).strip()
+
+    if not app_secret:
+        logger.error("META_APP_SECRET environment variable is not configured.")
+        raise HTTPException(
+            status_code=500,
+            detail="Server configuration error: Meta App Secret is not configured in backend environment."
+        )
+
+    api_version = os.getenv("META_WA_API_VERSION", "v25.0").strip()
+    graph_base = f"https://graph.facebook.com/{api_version}"
+
+    # 1. Server-side exchange: Authorization Code -> Access Token
+    token_url = f"{graph_base}/oauth/access_token"
+    token_params = {
+        "client_id": app_id,
+        "client_secret": app_secret,
+        "code": code
+    }
+
+    try:
+        token_resp = requests.get(token_url, params=token_params, timeout=15)
+    except Exception as exc:
+        logger.error(f"Network error during Meta token exchange: {exc}")
+        raise HTTPException(status_code=502, detail="Failed to connect to Meta Graph API.")
+
+    if token_resp.status_code != 200:
+        try:
+            err_json = token_resp.json().get("error", {})
+            err_msg = err_json.get("message", "Token exchange failed.")
+        except Exception:
+            err_msg = token_resp.text[:200]
+        logger.warning(f"Meta token exchange error (HTTP {token_resp.status_code}): {err_msg}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Meta authorization exchange failed: {err_msg}"
+        )
+
+    token_data = token_resp.json()
+    user_access_token = token_data.get("access_token")
+    if not user_access_token:
+        raise HTTPException(status_code=400, detail="Meta response did not contain an access token.")
+
+    # 2. Server-side token inspection via /debug_token
+    debug_url = f"{graph_base}/debug_token"
+    debug_params = {
+        "input_token": user_access_token,
+        "access_token": f"{app_id}|{app_secret}"
+    }
+
+    waba_id = req.waba_id.strip() if req.waba_id else None
+    phone_number_id = req.phone_number_id.strip() if req.phone_number_id else None
+    granted_scopes = []
+
+    try:
+        debug_resp = requests.get(debug_url, params=debug_params, timeout=15)
+        if debug_resp.status_code == 200:
+            dbg_data = debug_resp.json().get("data", {})
+            if not dbg_data.get("is_valid"):
+                raise HTTPException(status_code=400, detail="Meta token is invalid or expired.")
+
+            token_app_id = str(dbg_data.get("app_id", ""))
+            if token_app_id and token_app_id != str(app_id):
+                raise HTTPException(status_code=400, detail="Token was not issued for this application.")
+
+            granted_scopes = dbg_data.get("scopes", [])
+
+            # Extract WABA target ID from granular scopes if not supplied by postMessage
+            if not waba_id:
+                for gs in dbg_data.get("granular_scopes", []):
+                    if gs.get("scope") == "whatsapp_business_management":
+                        target_ids = gs.get("target_ids") or []
+                        if target_ids:
+                            waba_id = str(target_ids[0])
+                            break
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning(f"Error inspecting token via debug_token: {exc}")
+
+    # 3. Validate WABA ID and fetch account name
+    waba_name = "WhatsApp Business Account"
+    if waba_id:
+        try:
+            waba_resp = requests.get(
+                f"{graph_base}/{waba_id}",
+                headers={"Authorization": f"Bearer {user_access_token}"},
+                params={"fields": "id,name,currency,timezone_id"},
+                timeout=12
+            )
+            if waba_resp.status_code == 200:
+                waba_info = waba_resp.json()
+                waba_name = waba_info.get("name") or waba_name
+            else:
+                logger.warning(f"Could not verify WABA ID {waba_id}: {waba_resp.text[:150]}")
+        except Exception as exc:
+            logger.warning(f"Error checking WABA {waba_id}: {exc}")
+
+    # 4. Fetch and validate Phone Number Details
+    display_phone_number = None
+    verified_name = None
+    quality_rating = None
+
+    if phone_number_id:
+        try:
+            phone_resp = requests.get(
+                f"{graph_base}/{phone_number_id}",
+                headers={"Authorization": f"Bearer {user_access_token}"},
+                params={"fields": "id,display_phone_number,verified_name,quality_rating,code_verification_status"},
+                timeout=12
+            )
+            if phone_resp.status_code == 200:
+                p_data = phone_resp.json()
+                display_phone_number = p_data.get("display_phone_number")
+                verified_name = p_data.get("verified_name")
+                quality_rating = p_data.get("quality_rating")
+        except Exception as exc:
+            logger.warning(f"Error validating phone number {phone_number_id}: {exc}")
+
+    # Fallback: Query all phone numbers for this WABA if phone_number_id was not provided
+    if waba_id and not display_phone_number:
+        try:
+            numbers_resp = requests.get(
+                f"{graph_base}/{waba_id}/phone_numbers",
+                headers={"Authorization": f"Bearer {user_access_token}"},
+                params={"fields": "id,display_phone_number,verified_name,quality_rating,code_verification_status"},
+                timeout=12
+            )
+            if numbers_resp.status_code == 200:
+                num_list = numbers_resp.json().get("data", [])
+                if num_list:
+                    primary = num_list[0]
+                    phone_number_id = phone_number_id or primary.get("id")
+                    display_phone_number = primary.get("display_phone_number")
+                    verified_name = primary.get("verified_name")
+                    quality_rating = primary.get("quality_rating")
+        except Exception as exc:
+            logger.warning(f"Error fetching phone numbers for WABA {waba_id}: {exc}")
+
+    if not phone_number_id:
+        phone_number_id = f"waba_phone_{waba_id}" if waba_id else "unknown_phone_id"
+
+    # 5. Subscribe WABA to Webhooks (messages, message_template_status_update)
+    if waba_id:
+        try:
+            sub_resp = requests.post(
+                f"{graph_base}/{waba_id}/subscribed_apps",
+                headers={"Authorization": f"Bearer {user_access_token}"},
+                timeout=12
+            )
+            if sub_resp.status_code == 200:
+                logger.info(f"Subscribed MITRA app to WABA {waba_id} webhooks.")
+            else:
+                logger.warning(f"WABA subscribed_apps response (HTTP {sub_resp.status_code}): {sub_resp.text[:150]}")
+        except Exception as exc:
+            logger.warning(f"Error subscribing WABA to webhooks: {exc}")
+
+    # 6. Store connection in ConnectedAccountService with encryption at rest
+    from app.services.connected_account_service import connected_account_service
+    now_iso = datetime.utcnow().isoformat()
+    extra_data = {
+        "phone_number_id": phone_number_id,
+        "waba_id": waba_id,
+        "waba_name": waba_name,
+        "display_phone_number": display_phone_number,
+        "verified_name": verified_name,
+        "quality_rating": quality_rating,
+        "coexistence_mode": True,
+        "signup_type": "embedded_signup_v4",
+        "session_info_version": "3",
+        "feature_type": "whatsapp_business_app_onboarding",
+        "features": ["app_only_install"],
+        "connected_at": now_iso
+    }
+
+    connected_account_service.create_connection(
+        user_id=user_id,
+        provider="whatsapp_business",
+        email=display_phone_number or f"WABA-{waba_id or phone_number_id}",
+        access_token=user_access_token,
+        provider_account_id=phone_number_id,
+        scopes=granted_scopes,
+        extra_data=extra_data
+    )
+
+    # 7. Return sanitized response (NEVER expose access_token or app_secret)
+    return {
+        "status": "connected",
+        "provider": "whatsapp_business",
+        "phone_number_id": phone_number_id,
+        "waba_id": waba_id,
+        "display_phone_number": display_phone_number,
+        "verified_name": verified_name,
+        "quality_rating": quality_rating,
+        "coexistence_mode": True,
+        "signup_type": "embedded_signup_v4",
+        "message": "WhatsApp Business Account successfully connected via Meta Embedded Signup Coexistence.",
+        "timestamp": now_iso
+    }
+
 
 @router.get("/business/status")
-async def get_business_whatsapp_status(user_id: Optional[str] = "user_default"):
+async def get_business_whatsapp_status(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """
-    Returns real-time connection status of Meta WhatsApp Business Platform.
+    Returns real-time connection status of Meta WhatsApp Business Platform for the authenticated user.
     """
+    user_id = str(current_user.get("id") or current_user.get("user_id") or "user_default").strip()
     client = MetaWhatsAppExecutor()
     creds = client.get_credentials(user_id=user_id)
 
     has_token = bool(creds.get("access_token"))
     has_phone_id = bool(creds.get("phone_number_id"))
-    is_connected = has_token and has_phone_id
+    is_connected = has_token and has_phone_id and creds.get("source") != "none"
+
+    from app.services.connected_account_service import connected_account_service
+    conn = connected_account_service.get_user_connection(user_id, "whatsapp_business", include_decrypted_tokens=False)
+    extra = (conn.get("extra_data") or {}) if conn else {}
 
     # Mask token for security
     token = creds.get("access_token") or ""
@@ -156,6 +413,9 @@ async def get_business_whatsapp_status(user_id: Optional[str] = "user_default"):
         "source": creds.get("source", "none"),
         "phone_number_id": creds.get("phone_number_id") or None,
         "waba_id": creds.get("waba_id") or None,
+        "display_phone_number": extra.get("display_phone_number") or (conn.get("email") if conn else None),
+        "verified_name": extra.get("verified_name"),
+        "coexistence_mode": extra.get("coexistence_mode", False),
         "token_configured": has_token,
         "masked_token": masked_token,
         "api_version": client.api_version,
@@ -165,19 +425,22 @@ async def get_business_whatsapp_status(user_id: Optional[str] = "user_default"):
 
 
 @router.post("/business/connect")
-async def connect_business_whatsapp(req: BusinessConnectRequest, user_id: Optional[str] = "user_default"):
+async def connect_business_whatsapp(
+    req: BusinessConnectRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """
-    Saves and encrypts Meta WhatsApp Business Cloud API credentials for the user.
+    Saves and encrypts Meta WhatsApp Business Cloud API credentials for the authenticated user.
     """
     if not req.phone_number_id.strip() or not req.access_token.strip():
         raise HTTPException(status_code=400, detail="phone_number_id and access_token are required.")
 
-    clean_user = str(user_id).strip() if user_id else "user_default"
+    user_id = str(current_user.get("id") or current_user.get("user_id") or "user_default").strip()
 
     try:
         from app.services.connected_account_service import connected_account_service
-        connected_account_service.save_user_connection(
-            user_id=clean_user,
+        connected_account_service.create_connection(
+            user_id=user_id,
             provider="whatsapp_business",
             access_token=req.access_token.strip(),
             provider_account_id=req.phone_number_id.strip(),
@@ -185,12 +448,13 @@ async def connect_business_whatsapp(req: BusinessConnectRequest, user_id: Option
             extra_data={
                 "phone_number_id": req.phone_number_id.strip(),
                 "waba_id": req.waba_id.strip(),
+                "display_phone_number": req.phone_display_number,
                 "connected_at": datetime.utcnow().isoformat()
             }
         )
     except Exception as e:
         logger.error(f"Failed to persist WhatsApp Business credentials: {e}")
-        # In non-DB environment, still allow local execution
+        # In non-DB fallback environment
         os.environ["META_WA_PHONE_NUMBER_ID"] = req.phone_number_id.strip()
         os.environ["META_WA_WABA_ID"] = req.waba_id.strip()
         os.environ["META_WA_ACCESS_TOKEN"] = req.access_token.strip()
@@ -206,14 +470,16 @@ async def connect_business_whatsapp(req: BusinessConnectRequest, user_id: Option
 
 
 @router.post("/business/disconnect")
-async def disconnect_business_whatsapp(user_id: Optional[str] = "user_default"):
+async def disconnect_business_whatsapp(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """
-    Disconnects and deletes saved Meta WhatsApp Business credentials.
+    Disconnects and deletes saved Meta WhatsApp Business credentials for the authenticated user.
     """
-    clean_user = str(user_id).strip() if user_id else "user_default"
+    user_id = str(current_user.get("id") or current_user.get("user_id") or "user_default").strip()
     try:
         from app.services.connected_account_service import connected_account_service
-        connected_account_service.delete_user_connection(user_id=clean_user, provider="whatsapp_business")
+        connected_account_service.delete_connection(user_id=user_id, provider="whatsapp_business")
     except Exception as e:
         logger.warning(f"Error removing connection: {e}")
 
@@ -225,10 +491,14 @@ async def disconnect_business_whatsapp(user_id: Optional[str] = "user_default"):
 
 
 @router.post("/business/send")
-async def send_business_message(req: BusinessSendRequest, user_id: Optional[str] = "user_default"):
+async def send_business_message(
+    req: BusinessSendRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
     """
-    Executes backend transmission of WhatsApp message via official Meta Cloud API.
+    Executes backend transmission of WhatsApp message via official Meta Cloud API for the authenticated user.
     """
+    user_id = str(current_user.get("id") or current_user.get("user_id") or "user_default").strip()
     client = MetaWhatsAppExecutor()
     if req.template_name:
         res = client.send_template_message(

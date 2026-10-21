@@ -317,4 +317,8 @@ class ConnectedAccountService:
         state = self.get_gmail_access_state(user_id)
         return bool(state.get("connected") and state.get("gmail_compose_enabled"))
 
+    # Backward-compatible convenience aliases
+    save_user_connection = create_connection
+    delete_user_connection = delete_connection
+
 connected_account_service = ConnectedAccountService()

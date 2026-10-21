@@ -148,7 +148,7 @@ class MetaWhatsAppExecutor:
     """
 
     def __init__(self):
-        self.api_version = os.getenv("META_WA_API_VERSION", "v19.0")
+        self.api_version = os.getenv("META_WA_API_VERSION", "v25.0")
         self.graph_base_url = f"https://graph.facebook.com/{self.api_version}"
         self.system_access_token = (
             os.getenv("META_WA_ACCESS_TOKEN")

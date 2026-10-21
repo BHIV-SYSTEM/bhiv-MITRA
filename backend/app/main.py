@@ -325,7 +325,7 @@ async def security_middleware(request: Request, call_next):
         return response
 
     # Public endpoints manage their own validation
-    public_prefixes = ("/api/auth", "/api/integrations", "/api/pages", "/api/ecosystem", "/api/companion", "/api/replay", "/api/metrics", "/api/tantra", "/api/mitra", "/api/calendar", "/api/oauth", "/api/connections", "/api/webhooks")
+    public_prefixes = ("/api/auth", "/api/integrations", "/api/pages", "/api/ecosystem", "/api/companion", "/api/replay", "/api/metrics", "/api/tantra", "/api/mitra", "/api/calendar", "/api/oauth", "/api/connections", "/api/webhooks", "/api/whatsapp")
     if any(request.url.path.startswith(prefix) for prefix in public_prefixes):
         response = await call_next(request)
         return response
@@ -336,7 +336,7 @@ async def security_middleware(request: Request, call_next):
         return response
 
     if request.url.path.startswith("/api"):
-        public_paths = ("/api/auth", "/api/integrations", "/api/pages", "/api/calendar/feed", "/api/companion", "/api/system", "/api/mitra", "/api/oauth", "/api/connections")
+        public_paths = ("/api/auth", "/api/integrations", "/api/pages", "/api/calendar/feed", "/api/companion", "/api/system", "/api/mitra", "/api/oauth", "/api/connections", "/api/whatsapp")
         is_public = any(request.url.path.startswith(p) for p in public_paths)
 
         if not is_public:
