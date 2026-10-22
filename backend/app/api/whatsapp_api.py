@@ -35,6 +35,7 @@ class MetaEmbeddedSignupExchangeRequest(BaseModel):
     code: str = Field(..., description="Meta authorization code from Embedded Signup")
     waba_id: Optional[str] = Field(None, description="WhatsApp Business Account ID returned in session info")
     phone_number_id: Optional[str] = Field(None, description="Phone number ID returned in session info")
+    redirect_uri: Optional[str] = Field(None, description="Optional redirect URI if configured in Meta Dashboard")
 
 class PersonalPrepareRequest(BaseModel):
     phone: str = Field(..., description="Recipient phone number with or without country code")
@@ -237,6 +238,8 @@ async def exchange_embedded_signup_code(
     api_version = os.getenv("META_WA_API_VERSION", "v25.0").strip()
     graph_base = f"https://graph.facebook.com/{api_version}"
 
+    redirect_uri = (req.redirect_uri or os.getenv("META_WA_REDIRECT_URI", "")).strip()
+
     # 1. Server-side exchange: Authorization Code -> Access Token
     token_url = f"{graph_base}/oauth/access_token"
     token_params = {
@@ -244,6 +247,8 @@ async def exchange_embedded_signup_code(
         "client_secret": app_secret,
         "code": code
     }
+    if redirect_uri:
+        token_params["redirect_uri"] = redirect_uri
 
     try:
         token_resp = requests.get(token_url, params=token_params, timeout=15)
