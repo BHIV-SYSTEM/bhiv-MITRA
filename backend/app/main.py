@@ -202,6 +202,32 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Telegram webhook setup failed: {e}")
 
+    # Safe Meta WhatsApp Embedded Signup startup configuration validation
+    _meta_app_id = (
+        os.getenv("META_APP_ID")
+        or os.getenv("META_WA_APP_ID")
+        or "1325283592858854"
+    ).strip()
+    _meta_secret_configured = bool(
+        (
+            os.getenv("META_APP_SECRET")
+            or os.getenv("META_WA_APP_SECRET")
+            or os.getenv("WHATSAPP_APP_SECRET")
+            or os.getenv("INSTAGRAM_APP_SECRET")
+            or ""
+        ).strip()
+    )
+    if _meta_secret_configured:
+        logger.info(
+            "Meta WhatsApp Embedded Signup configuration: ACTIVE (App ID: %s, App Secret: [CONFIGURED])",
+            _meta_app_id
+        )
+    else:
+        logger.warning(
+            "Meta WhatsApp Embedded Signup configuration: INCOMPLETE (App ID: %s, App Secret: [NOT CONFIGURED - Set META_APP_SECRET in backend environment])",
+            _meta_app_id
+        )
+
     yield
 
     # Shutdown reminder scheduler

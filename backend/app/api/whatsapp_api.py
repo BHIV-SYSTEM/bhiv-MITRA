@@ -141,6 +141,48 @@ async def generate_ai_draft(req: AIDraftRequest):
 
 # ── 2. BUSINESS WHATSAPP & META EMBEDDED SIGNUP (COEXISTENCE) ──
 
+@router.get("/embedded-signup/config-status")
+async def get_embedded_signup_config_status():
+    """
+    Safe configuration status endpoint for Meta WhatsApp Embedded Signup (Coexistence).
+    Reports whether the required Meta App Secret and App ID are configured
+    in the backend environment without revealing any sensitive secret values.
+    """
+    app_id = (
+        os.getenv("META_APP_ID")
+        or os.getenv("META_WA_APP_ID")
+        or os.getenv("INSTAGRAM_APP_ID")
+        or "1325283592858854"
+    ).strip()
+
+    app_secret = (
+        os.getenv("META_APP_SECRET")
+        or os.getenv("META_WA_APP_SECRET")
+        or os.getenv("WHATSAPP_APP_SECRET")
+        or os.getenv("INSTAGRAM_APP_SECRET")
+        or ""
+    ).strip()
+
+    config_id = os.getenv("META_WA_CONFIG_ID", "1600310887693339").strip()
+    api_version = os.getenv("META_WA_API_VERSION", "v25.0").strip()
+    is_secret_configured = bool(app_secret)
+
+    return {
+        "status": "configured" if is_secret_configured else "missing_secret",
+        "app_id": app_id,
+        "app_secret_configured": is_secret_configured,
+        "config_id": config_id,
+        "api_version": api_version,
+        "coexistence_enabled": True,
+        "message": (
+            "Meta Embedded Signup is ready for Coexistence onboarding."
+            if is_secret_configured
+            else "Server configuration error: Meta App Secret is not configured in backend environment."
+        ),
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+
 @router.post("/embedded-signup/exchange")
 @router.post("/business/oauth/exchange")
 async def exchange_embedded_signup_code(
@@ -186,10 +228,10 @@ async def exchange_embedded_signup_code(
     ).strip()
 
     if not app_secret:
-        logger.error("META_APP_SECRET environment variable is not configured.")
+        logger.error("META_APP_SECRET environment variable is not configured in backend environment.")
         raise HTTPException(
             status_code=500,
-            detail="Server configuration error: Meta App Secret is not configured in backend environment."
+            detail="Server configuration error: Meta App Secret is not configured in backend environment. Please configure META_APP_SECRET in the backend environment."
         )
 
     api_version = os.getenv("META_WA_API_VERSION", "v25.0").strip()
@@ -408,6 +450,22 @@ async def get_business_whatsapp_status(
     token = creds.get("access_token") or ""
     masked_token = f"{token[:6]}...{token[-4:]}" if len(token) > 12 else ("Set" if token else "None")
 
+    meta_secret_configured = bool(
+        (
+            os.getenv("META_APP_SECRET")
+            or os.getenv("META_WA_APP_SECRET")
+            or os.getenv("WHATSAPP_APP_SECRET")
+            or os.getenv("INSTAGRAM_APP_SECRET")
+            or ""
+        ).strip()
+    )
+    meta_app_id = (
+        os.getenv("META_APP_ID")
+        or os.getenv("META_WA_APP_ID")
+        or os.getenv("INSTAGRAM_APP_ID")
+        or "1325283592858854"
+    ).strip()
+
     return {
         "status": "connected" if is_connected else "disconnected",
         "mode": "business",
@@ -419,6 +477,8 @@ async def get_business_whatsapp_status(
         "coexistence_mode": extra.get("coexistence_mode", False),
         "token_configured": has_token,
         "masked_token": masked_token,
+        "meta_app_id": meta_app_id,
+        "app_secret_configured": meta_secret_configured,
         "api_version": client.api_version,
         "can_send": is_connected,
         "timestamp": datetime.utcnow().isoformat()

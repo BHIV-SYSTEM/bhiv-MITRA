@@ -320,3 +320,83 @@ def test_coexistence_safeguards_block_registration_and_deregistration():
     # Valid messaging endpoint must pass boundary
     assert_safe_whatsapp_endpoint("104829104928104/messages")
     assert_safe_whatsapp_endpoint("https://graph.facebook.com/v25.0/104829104928104/messages")
+
+
+def test_embedded_signup_config_status_reports_safe_booleans():
+    """
+    Validation: /api/whatsapp/embedded-signup/config-status reports configuration
+    state safely without ever exposing the raw secret value.
+    """
+    res = client.get("/api/whatsapp/embedded-signup/config-status")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "configured"
+    assert data["app_secret_configured"] is True
+    assert data["app_id"] == "1325283592858854"
+    assert data["coexistence_enabled"] is True
+    # Ensure no raw secret is exposed anywhere in the response payload
+    assert "mock_app_secret_abc123xyz789" not in json.dumps(data)
+
+
+def test_embedded_signup_config_status_reports_missing_secret_safely():
+    """
+    Validation: When secret is missing from environment, config-status accurately
+    reports missing_secret with a clear actionable message.
+    """
+    with patch.dict(os.environ, {
+        "META_APP_SECRET": "",
+        "META_WA_APP_SECRET": "",
+        "WHATSAPP_APP_SECRET": "",
+        "INSTAGRAM_APP_SECRET": ""
+    }):
+        res = client.get("/api/whatsapp/embedded-signup/config-status")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "missing_secret"
+        assert data["app_secret_configured"] is False
+        assert "Meta App Secret is not configured" in data["message"]
+
+
+def test_embedded_signup_missing_secret_returns_500_with_helpful_detail():
+    """
+    Validation: Authorization code exchange returns clear 500 configuration error
+    if the secret is absent from the backend environment.
+    """
+    def mock_auth_user():
+        return TEST_USER_OBJ
+
+    app.dependency_overrides[get_current_user] = mock_auth_user
+    try:
+        with patch.dict(os.environ, {
+            "META_APP_SECRET": "",
+            "META_WA_APP_SECRET": "",
+            "WHATSAPP_APP_SECRET": "",
+            "INSTAGRAM_APP_SECRET": ""
+        }):
+            resp = client.post(
+                "/api/whatsapp/embedded-signup/exchange",
+                json={"code": "sample_auth_code_for_error_test"}
+            )
+            assert resp.status_code == 500
+            assert "Meta App Secret is not configured in backend environment" in resp.json().get("detail", "")
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_business_status_includes_safe_secret_flag():
+    """
+    Validation: /api/whatsapp/business/status includes safe app_secret_configured flag.
+    """
+    def mock_auth_user():
+        return TEST_USER_OBJ
+
+    app.dependency_overrides[get_current_user] = mock_auth_user
+    try:
+        resp = client.get("/api/whatsapp/business/status")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["app_secret_configured"] is True
+        assert data["meta_app_id"] == "1325283592858854"
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+

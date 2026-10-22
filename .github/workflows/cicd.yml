@@ -95,6 +95,12 @@ jobs:
           cat <<'EOF' > backend/.env
           ${{ secrets.BACKEND_ENV_FILE }}
           EOF
+          if [ -n "${{ secrets.META_APP_SECRET }}" ]; then
+            echo "META_APP_SECRET=${{ secrets.META_APP_SECRET }}" >> backend/.env
+          fi
+          if [ -n "${{ secrets.META_APP_ID }}" ]; then
+            echo "META_APP_ID=${{ secrets.META_APP_ID }}" >> backend/.env
+          fi
 
       - name: Tar deployment files
         run: |
