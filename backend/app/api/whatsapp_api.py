@@ -238,7 +238,11 @@ async def exchange_embedded_signup_code(
     api_version = os.getenv("META_WA_API_VERSION", "v25.0").strip()
     graph_base = f"https://graph.facebook.com/{api_version}"
 
-    redirect_uri = (req.redirect_uri or os.getenv("META_WA_REDIRECT_URI", "")).strip()
+    redirect_uri = (
+        req.redirect_uri
+        or os.getenv("META_WA_REDIRECT_URI", "")
+        or "https://mitra.blackholeinfiverse.com/"
+    ).strip()
 
     # 1. Server-side exchange: Authorization Code -> Access Token
     token_url = f"{graph_base}/oauth/access_token"
