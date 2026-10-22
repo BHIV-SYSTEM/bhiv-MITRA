@@ -1,6 +1,6 @@
 import React from 'react';
 import { cn } from '../../lib/utils';
-import { Activity, Clock, CheckCircle, AlertTriangle, PlayCircle } from 'lucide-react';
+import { Activity, Clock } from 'lucide-react';
 
 /**
  * BHIV Design System Foundation

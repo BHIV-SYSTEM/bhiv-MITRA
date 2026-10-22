@@ -112,7 +112,6 @@ const App: React.FC = () => {
     userId, sidebar, contextPanel, isMobile, authModalOpen, setAuthModalOpen,
     setStatus, setSessionId, setUserName, setMemory, setAuth, setAuthStatus,
     addMessage, updateMessage, clearMessages, addNotification, addContextItem,
-    chatbotOpen,
   } = useCompanionStore();
 
   const [activeSection, setActiveSection] = useState(() => {

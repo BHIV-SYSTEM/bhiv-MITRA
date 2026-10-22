@@ -46,7 +46,7 @@ export const COMPANION_PRESETS: CompanionPreset[] = [
 ];
 
 export const CompanionSwitcher: React.FC = () => {
-  const { companionAvatar, companionName, setCompanionAvatar, chatbotOpen, toggleChatbot } = useCompanionStore();
+  const { companionAvatar, companionName, setCompanionAvatar, chatbotOpen } = useCompanionStore();
   const [isOpen, setIsOpen] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);

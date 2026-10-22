@@ -4,7 +4,7 @@ import {
   Zap, Calendar, ArrowRight, UserPlus,
   ChevronRight, Compass, CheckSquare, Bell,
   CheckCircle2, AlertTriangle, Circle, Ban, RotateCcw,
-  X, Loader2, LayoutGrid, Maximize2, BarChart2, PlayCircle
+  X, Loader2
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useCompanionStore, toggleMitraChatbotWindow } from '../../store/companion.store';
@@ -13,8 +13,6 @@ import { CompanionService } from '../../services/companion.service';
 import { authApi } from '../../services/authApi';
 import { getApiBase, getAuthHeaders } from '../../services/apiConfig';
 import ConversationCard from '../cards/ConversationCard';
-import { DailyBriefingCard } from '../cards/DailyBriefingCard';
-import { MessageSquare } from 'lucide-react';
 
 const ThinkingIndicator = () => (
   <motion.div
@@ -452,113 +450,13 @@ const CompactConversationHeader: React.FC<{
   );
 };
 
-const WorkspaceHubView: React.FC<{
-  onExpandFullScreen: () => void;
-  onNavigate: (section: string) => void;
-}> = ({ onExpandFullScreen, onNavigate }) => {
-  return (
-    <div className="w-full flex flex-col gap-4 sm:gap-5 py-3 sm:py-5">
-      {/* Banner */}
-      <motion.div
-        initial={{ opacity: 0, y: -6 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="p-4 sm:p-6 rounded-2xl bg-surface-elevated/90 border border-brand/25 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
-      >
-        <div className="flex items-center gap-3.5 min-w-0">
-          <div className="w-11 h-11 rounded-2xl bg-brand/15 border border-brand/35 flex items-center justify-center text-brand-light flex-shrink-0 shadow-xs">
-            <LayoutGrid size={20} className="text-brand-light" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-3xs font-bold uppercase tracking-wider text-brand-light">Mitra Workspace</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-state-success animate-pulse" />
-              <span className="text-3xs font-medium text-state-success">Companion Active in Chatbot</span>
-            </div>
-            <h2 className="text-base sm:text-lg font-bold text-text-primary tracking-tight truncate mt-0.5">
-              Workspace Overview
-            </h2>
-            <p className="text-2xs text-text-muted mt-0.5">
-              Mitra Companion is active in the chatbot window. Background chat is closed to keep your workspace clear.
-            </p>
-          </div>
-        </div>
-
-        <button
-          onClick={onExpandFullScreen}
-          className="px-3.5 py-2 rounded-xl bg-brand hover:bg-brand-light text-white text-xs font-semibold shadow-glow transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer flex-shrink-0"
-        >
-          <Maximize2 size={13} />
-          <span>Switch to Full-Screen Chat</span>
-        </button>
-      </motion.div>
-
-      {/* Quick Navigation Cards */}
-      <div>
-        <div className="text-3xs font-bold uppercase tracking-wider text-text-muted mb-2.5 px-1">
-          Workspace Modules
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {[
-            {
-              id: 'calendar',
-              label: 'Calendar & Schedule',
-              desc: 'Upcoming events & Google Calendar sync',
-              icon: Calendar,
-              color: 'text-blue-400 bg-blue-500/10 border-blue-500/20',
-            },
-            {
-              id: 'tasks',
-              label: 'Tasks & Priorities',
-              desc: 'Kanban board & priority to-dos',
-              icon: CheckSquare,
-              color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
-            },
-            {
-              id: 'analytics',
-              label: 'Analytics & Habits',
-              desc: 'Productivity monitors & focus logs',
-              icon: BarChart2,
-              color: 'text-purple-400 bg-purple-500/10 border-purple-500/20',
-            },
-            {
-              id: 'workflows',
-              label: 'Automated Workflows',
-              desc: 'Daily routines & smart actions',
-              icon: PlayCircle,
-              color: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
-            },
-          ].map((card) => {
-            const Icon = card.icon;
-            return (
-              <button
-                key={card.id}
-                onClick={() => onNavigate(card.id)}
-                className="p-4 rounded-2xl bg-surface-elevated/70 border border-border-subtle hover:border-brand/40 hover:bg-surface-hover transition-all text-left group cursor-pointer active:scale-[0.98] shadow-xs"
-              >
-                <div className={cn("w-9 h-9 rounded-xl border flex items-center justify-center mb-3 group-hover:scale-105 transition-transform", card.color)}>
-                  <Icon size={16} />
-                </div>
-                <div className="text-xs font-bold text-text-primary group-hover:text-brand-light transition-colors">
-                  {card.label}
-                </div>
-                <p className="text-2xs text-text-muted mt-1 leading-relaxed">
-                  {card.desc}
-                </p>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-};
 
 interface ConversationCenterProps {
   onNewChat?: () => void;
 }
 
 const ConversationCenter: React.FC<ConversationCenterProps> = ({ onNewChat }) => {
-  const { messages, status, clearMessages, setDraftEditState, chatbotOpen, setChatbotOpen } = useCompanionStore();
+  const { messages, status, clearMessages, setDraftEditState } = useCompanionStore();
   const bottomRef = useRef<HTMLDivElement>(null);
   const isThinking = status === 'thinking';
 

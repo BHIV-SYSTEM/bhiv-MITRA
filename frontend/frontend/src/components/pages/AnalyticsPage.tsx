@@ -131,7 +131,6 @@ export const AnalyticsPage: React.FC<{ onChatNavigate: (msg: string) => void }> 
   const score = data?.productivity_score || 85;
   const completionRate = data?.completion_rate !== undefined ? data.completion_rate : 100.0;
   const focusHours = data?.focus_hours_this_week || 1.5;
-  const peakWindow = data?.peak_focus_window || '8:30 AM – 11:30 AM (Morning Peak)';
 
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="page-container pb-6">
