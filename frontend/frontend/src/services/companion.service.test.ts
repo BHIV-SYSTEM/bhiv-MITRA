@@ -1,4 +1,12 @@
-import { parseSSELine } from './companion.service';
+import { TextEncoder, TextDecoder } from 'util';
+import { parseSSELine, CompanionService } from './companion.service';
+
+if (typeof global.TextEncoder === 'undefined') {
+  global.TextEncoder = TextEncoder;
+}
+if (typeof global.TextDecoder === 'undefined') {
+  global.TextDecoder = TextDecoder as any;
+}
 
 describe('SSE Token Parsing and Whitespace Preservation', () => {
   test('parses simple token without leading space', () => {
@@ -107,5 +115,116 @@ describe('SSE Token Parsing and Whitespace Preservation', () => {
       type: 'token',
       content: 'Here is the answer you requested:',
     });
+  });
+});
+
+describe('CompanionService.chatStream termination and reader cleanup', () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  function createMockReader(chunks: string[]) {
+    let index = 0;
+    const encoder = new TextEncoder();
+    const reader = {
+      read: jest.fn().mockImplementation(async () => {
+        if (index < chunks.length) {
+          const chunk = chunks[index++];
+          return { value: encoder.encode(chunk), done: false };
+        }
+        return { value: undefined, done: true };
+      }),
+      cancel: jest.fn().mockResolvedValue(undefined),
+      releaseLock: jest.fn(),
+    };
+    return reader;
+  }
+
+  test('1 & 2. A stream emitting message_complete but delaying or omitting [DONE] resolves promptly and preserves final content', async () => {
+    const reader = createMockReader([
+      'data: {"type": "assistant_delta", "delta": "Hello"}\n\n',
+      'data: {"type": "message_complete", "message": "Hello world, finished!"}\n\n',
+      'data: [DONE]\n\n',
+    ]);
+
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { getReader: () => reader },
+      json: async () => ({}),
+    } as any);
+
+    const onToken = jest.fn();
+    const onEvent = jest.fn();
+
+    const result = await CompanionService.chatStream('test_user', 'hi', onToken, undefined, 'web', onEvent);
+
+    expect(result).toBe('Hello world, finished!');
+    expect(onToken).toHaveBeenCalledWith('Hello');
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'message_complete', message: 'Hello world, finished!' })
+    );
+    // Reader should not have read past message_complete (did not read chunk 3)
+    expect(reader.read).toHaveBeenCalledTimes(2);
+  });
+
+  test('3. The reader is cleaned up appropriately on early completion', async () => {
+    const reader = createMockReader([
+      'data: {"type": "message_complete", "message": "Complete"}\n\n',
+    ]);
+
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { getReader: () => reader },
+      json: async () => ({}),
+    } as any);
+
+    await CompanionService.chatStream('test_user', 'hi', jest.fn());
+
+    expect(reader.cancel).toHaveBeenCalled();
+    expect(reader.releaseLock).toHaveBeenCalled();
+  });
+
+  test('4. Completion is not applied twice when [DONE] follows message_complete', async () => {
+    const reader = createMockReader([
+      'data: {"type": "message_complete", "message": "Final payload"}\n\ndata: [DONE]\n\n',
+    ]);
+
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { getReader: () => reader },
+      json: async () => ({}),
+    } as any);
+
+    const onEvent = jest.fn();
+    const result = await CompanionService.chatStream('test_user', 'hi', jest.fn(), undefined, 'web', onEvent);
+
+    expect(result).toBe('Final payload');
+    expect(onEvent).toHaveBeenCalledTimes(1);
+  });
+
+  test('5. Final buffered event is processed when EOF occurs without a trailing newline', async () => {
+    const reader = createMockReader([
+      'data: {"type": "message_complete", "message": "Payload at EOF without newline"}',
+    ]);
+
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { getReader: () => reader },
+      json: async () => ({}),
+    } as any);
+
+    const onEvent = jest.fn();
+    const result = await CompanionService.chatStream('test_user', 'hi', jest.fn(), undefined, 'web', onEvent);
+
+    expect(result).toBe('Payload at EOF without newline');
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'message_complete', message: 'Payload at EOF without newline' })
+    );
   });
 });

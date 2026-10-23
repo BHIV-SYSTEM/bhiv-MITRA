@@ -181,24 +181,33 @@ async def filter_action_tokens(token_stream: AsyncIterator[str]) -> AsyncIterato
                 buffer = []
                 in_potential_json = False
                 brace_depth = 0
+                in_string = False
+                escape_next = False
             yield token
             continue
 
-        if not in_potential_json:
-            brace_idx = token.find('{')
-            if brace_idx == -1:
-                yield token
-            else:
-                pre_brace = token[:brace_idx]
-                if pre_brace:
-                    yield pre_brace
-                remainder = token[brace_idx:]
-                in_potential_json = True
-                brace_depth = 0
-                in_string = False
-                escape_next = False
-                buffer = [remainder]
-                for ch in remainder:
+        text_to_process = token
+        while text_to_process:
+            if not in_potential_json:
+                brace_idx = text_to_process.find('{')
+                if brace_idx == -1:
+                    yield text_to_process
+                    text_to_process = ""
+                    break
+                else:
+                    pre_brace = text_to_process[:brace_idx]
+                    if pre_brace:
+                        yield pre_brace
+                    in_potential_json = True
+                    brace_depth = 0
+                    in_string = False
+                    escape_next = False
+                    buffer = []
+                    text_to_process = text_to_process[brace_idx:]
+
+            if in_potential_json:
+                found_closing = False
+                for idx, ch in enumerate(text_to_process):
                     if escape_next:
                         escape_next = False
                         continue
@@ -215,62 +224,43 @@ async def filter_action_tokens(token_stream: AsyncIterator[str]) -> AsyncIterato
                         elif ch == '}':
                             brace_depth -= 1
                             if brace_depth == 0:
-                                buffered_text = ''.join(buffer)
-                                try:
-                                    parsed = json.loads(buffered_text.strip())
-                                    if is_internal_action_payload(parsed):
-                                        buffer = []
-                                        in_potential_json = False
-                                        break
-                                    else:
-                                        for b in buffer:
-                                            yield b
-                                        buffer = []
-                                        in_potential_json = False
-                                        break
-                                except Exception:
-                                    pass
-        else:
-            buffer.append(token)
-            for ch in token:
-                if escape_next:
-                    escape_next = False
-                    continue
-                if ch == '\\':
-                    if in_string:
-                        escape_next = True
-                    continue
-                if ch == '"':
-                    in_string = not in_string
-                    continue
-                if not in_string:
-                    if ch == '{':
-                        brace_depth += 1
-                    elif ch == '}':
-                        brace_depth -= 1
-                        if brace_depth == 0:
-                            buffered_text = ''.join(buffer)
-                            try:
-                                parsed = json.loads(buffered_text.strip())
-                                if is_internal_action_payload(parsed):
-                                    buffer = []
-                                    in_potential_json = False
-                                    break
-                                else:
-                                    for b in buffer:
-                                        yield b
-                                    buffer = []
-                                    in_potential_json = False
-                                    break
-                            except Exception:
-                                pass
+                                candidate_slice = text_to_process[:idx + 1]
+                                candidate_json = ''.join(buffer) + candidate_slice
+                                trailing_text = text_to_process[idx + 1:]
 
-            if in_potential_json and sum(len(b) for b in buffer) > max_buffer_chars:
-                for b in buffer:
-                    yield b
-                buffer = []
-                in_potential_json = False
-                brace_depth = 0
+                                try:
+                                    parsed = json.loads(candidate_json.strip())
+                                    if is_internal_action_payload(parsed):
+                                        # Suppress internal action payload
+                                        pass
+                                    else:
+                                        # Yield legitimate JSON (e.g. user-requested JSON)
+                                        yield candidate_json
+                                except Exception:
+                                    # Non-JSON or malformed syntax: yield as regular prose
+                                    yield candidate_json
+
+                                buffer = []
+                                in_potential_json = False
+                                brace_depth = 0
+                                in_string = False
+                                escape_next = False
+
+                                text_to_process = trailing_text
+                                found_closing = True
+                                break
+
+                if not found_closing:
+                    buffer.append(text_to_process)
+                    text_to_process = ""
+                    if sum(len(b) for b in buffer) > max_buffer_chars:
+                        for b in buffer:
+                            yield b
+                        buffer = []
+                        in_potential_json = False
+                        brace_depth = 0
+                        in_string = False
+                        escape_next = False
 
     if buffer:
         buffered_text = ''.join(buffer)

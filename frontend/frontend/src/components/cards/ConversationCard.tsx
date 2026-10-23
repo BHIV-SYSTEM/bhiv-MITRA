@@ -17,6 +17,14 @@ interface Props {
 const ConversationCard: React.FC<Props> = ({ message, onActionConfirm }) => {
   const isAssistant = message.role === 'assistant';
   const [isPlaying, setIsPlaying] = useState(false);
+  const hasContent = Boolean(message.content && message.content.trim().length > 0);
+  const hasCapability = Boolean(message.capabilityResult);
+
+  // When the assistant placeholder has empty or whitespace-only content and has no capability card,
+  // do not render the empty styled message bubble or empty card shell.
+  if (isAssistant && !hasContent && !hasCapability) {
+    return null;
+  }
 
   const handleSpeak = async () => {
     if (isPlaying) {
@@ -98,14 +106,16 @@ const ConversationCard: React.FC<Props> = ({ message, onActionConfirm }) => {
         isAssistant ? 'items-start' : 'items-end',
       )}>
         {/* Bubble */}
-        <div className={cn(
-          'relative group px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-lg text-sm leading-relaxed break-words',
-          isAssistant
-            ? 'bg-surface-elevated border border-border-subtle text-text-primary rounded-tl-sm'
-            : 'bg-brand-dim text-text-primary border border-brand/30 rounded-tr-sm',
-        )}>
-          {isAssistant ? <FormattedMarkdown content={message.content} /> : message.content}
-        </div>
+        {hasContent && (
+          <div className={cn(
+            'relative group px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-lg text-sm leading-relaxed break-words',
+            isAssistant
+              ? 'bg-surface-elevated border border-border-subtle text-text-primary rounded-tl-sm'
+              : 'bg-brand-dim text-text-primary border border-brand/30 rounded-tr-sm',
+          )}>
+            {isAssistant ? <FormattedMarkdown content={message.content} /> : message.content}
+          </div>
+        )}
 
         {/* Inline communication approval card (B.COMM-3 Structured Pending Action) */}
         {isAssistant && message.capabilityResult && message.capabilityResult.data?.confirmation && (
@@ -137,7 +147,7 @@ const ConversationCard: React.FC<Props> = ({ message, onActionConfirm }) => {
         )}
 
         {/* Smart Interactive Action Pills for Assistant Responses */}
-        {isAssistant && !message.capabilityResult && (
+        {isAssistant && !message.capabilityResult && hasContent && (
           <div className="flex flex-wrap gap-1.5 mt-1 select-none">
             {(() => {
               const text = message.content.toLowerCase();

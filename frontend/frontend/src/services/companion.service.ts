@@ -192,45 +192,71 @@ export const CompanionService = {
       const decoder = new TextDecoder('utf-8');
       let accumulated = '';
       let buffer = '';
+      let isCompleted = false;
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          const parsed = parseSSELine(line);
-          if (parsed.type === 'ignore') continue;
-          if (parsed.type === 'done') {
-            return accumulated;
-          }
-          if (parsed.type === 'error') {
-            throw new Error(parsed.content || 'Streaming error');
-          }
-          if (parsed.type === 'event' && parsed.event) {
-            const evt = parsed.event;
-            if (evt.type === 'assistant_delta' && evt.delta !== undefined) {
-              accumulated += evt.delta;
-              onToken(evt.delta);
-            } else if (evt.type === 'message_complete') {
-              if (evt.message && !accumulated) {
-                accumulated = evt.message;
-              }
-              if (onEvent) onEvent(evt);
-            } else if (evt.type === 'error') {
-              throw new Error(evt.error || 'Streaming error');
-            } else {
-              if (onEvent) onEvent(evt);
+      const processLine = (line: string): boolean => {
+        const parsed = parseSSELine(line);
+        if (parsed.type === 'ignore') return false;
+        if (parsed.type === 'done') {
+          isCompleted = true;
+          return true;
+        }
+        if (parsed.type === 'error') {
+          throw new Error(parsed.content || 'Streaming error');
+        }
+        if (parsed.type === 'event' && parsed.event) {
+          const evt = parsed.event;
+          if (evt.type === 'assistant_delta' && evt.delta !== undefined) {
+            accumulated += evt.delta;
+            onToken(evt.delta);
+          } else if (evt.type === 'message_complete') {
+            if (typeof evt.message === 'string') {
+              accumulated = evt.message;
             }
-          }
-          if (parsed.type === 'token' && parsed.content !== undefined) {
-            accumulated += parsed.content;
-            onToken(parsed.content);
+            if (onEvent) onEvent(evt);
+            isCompleted = true;
+            return true;
+          } else if (evt.type === 'error') {
+            throw new Error(evt.error || 'Streaming error');
+          } else {
+            if (onEvent) onEvent(evt);
           }
         }
+        if (parsed.type === 'token' && parsed.content !== undefined) {
+          accumulated += parsed.content;
+          onToken(parsed.content);
+        }
+        return false;
+      };
+
+      try {
+        while (!isCompleted) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const terminal = processLine(line);
+            if (terminal) break;
+          }
+        }
+
+        // Process any remaining non-empty SSE buffer when the reader finishes
+        if (!isCompleted && buffer.trim()) {
+          processLine(buffer);
+        }
+      } finally {
+        if (isCompleted) {
+          try {
+            reader.cancel().catch(() => {});
+          } catch (_) {}
+        }
+        try {
+          reader.releaseLock();
+        } catch (_) {}
       }
 
       return accumulated;

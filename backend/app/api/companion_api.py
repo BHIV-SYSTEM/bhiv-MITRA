@@ -123,7 +123,14 @@ async def companion_chat_stream(
             yield f"data: {json.dumps(err_event)}\n\n"
             yield "data: [DONE]\n\n"
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/api/companion/context/sync")

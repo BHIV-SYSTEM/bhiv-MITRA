@@ -716,3 +716,102 @@ def test_21_historical_naked_action_payloads_not_re_injected_into_llm_context():
         assert messages[-1]["content"] == "Now schedule a meeting"
 
     asyncio.run(_run())
+
+
+def test_22_internal_action_object_and_trailing_prose_in_one_chunk():
+    """22. When a single chunk contains an internal action JSON envelope followed by prose, suppress JSON and preserve trailing prose."""
+    async def _run():
+        from app.companion.companion_orchestrator import filter_action_tokens
+
+        async def stream():
+            yield '{"action": "email", "parameters": {}} I am Mitra.'
+
+        tokens = []
+        async for t in filter_action_tokens(stream()):
+            tokens.append(t)
+
+        result = "".join(tokens)
+        assert '{"action": "email"' not in result
+        assert "parameters" not in result
+        assert result == " I am Mitra."
+
+    asyncio.run(_run())
+
+
+def test_23_legitimate_json_object_with_trailing_prose():
+    """23. Legitimate user-requested JSON followed by trailing prose in one chunk is completely preserved."""
+    async def _run():
+        from app.companion.companion_orchestrator import filter_action_tokens
+
+        async def stream():
+            yield '{"status": "ok", "count": 42} Here is the data summary.'
+
+        tokens = []
+        async for t in filter_action_tokens(stream()):
+            tokens.append(t)
+
+        result = "".join(tokens)
+        assert '{"status": "ok", "count": 42}' in result
+        assert " Here is the data summary." in result
+        assert result == '{"status": "ok", "count": 42} Here is the data summary.'
+
+    asyncio.run(_run())
+
+
+def test_24_nested_objects_and_braces_inside_strings():
+    """24. Correctly tracks nested objects and braces inside strings with escaped quotes, suppressing the action envelope."""
+    async def _run():
+        from app.companion.companion_orchestrator import filter_action_tokens
+
+        async def stream():
+            yield '{"action": "email", "parameters": {"note": "closing } brace and \\"quote\\"", "sub": {"level": 2}}} All processed cleanly.'
+
+        tokens = []
+        async for t in filter_action_tokens(stream()):
+            tokens.append(t)
+
+        result = "".join(tokens)
+        assert '{"action": "email"' not in result
+        assert "closing } brace" not in result
+        assert result == " All processed cleanly."
+
+    asyncio.run(_run())
+
+
+def test_25_consecutive_objects_and_prose_segments():
+    """25. Consecutive objects and prose segments in single or consecutive chunks are processed without loss or reordering."""
+    async def _run():
+        from app.companion.companion_orchestrator import filter_action_tokens
+
+        # Multiple internal action objects mixed with prose across chunks
+        async def stream():
+            yield "Preamble. "
+            yield '{"action": "email", "parameters": {"to": "a@example.com"}} Middle prose. '
+            yield '{"action": "calendar", "parameters": {}} Epilogue.'
+
+        tokens = []
+        async for t in filter_action_tokens(stream()):
+            tokens.append(t)
+
+        result = "".join(tokens)
+        assert '{"action": "email"' not in result
+        assert '{"action": "calendar"' not in result
+        assert result == "Preamble.  Middle prose.  Epilogue."
+
+        # Consecutive chunks where object is split across chunks and followed by legitimate JSON
+        async def stream_split():
+            yield '{"action": "whatsapp", '
+            yield '"parameters": {"phone": "123"}} Text in between. '
+            yield '{"config": {"theme": "dark"}} Final note.'
+
+        tokens_split = []
+        async for t in filter_action_tokens(stream_split()):
+            tokens_split.append(t)
+
+        result_split = "".join(tokens_split)
+        assert '{"action": "whatsapp"' not in result_split
+        assert '123' not in result_split
+        assert '{"config": {"theme": "dark"}}' in result_split
+        assert result_split == ' Text in between. {"config": {"theme": "dark"}} Final note.'
+
+    asyncio.run(_run())

@@ -432,22 +432,31 @@ const App: React.FC = () => {
 
       if (controller.signal.aborted) return;
 
-      setStatus('active');
-      activeAbortControllerRef.current = null;
-      activeMessageIdRef.current = null;
-
     } catch (err: any) {
-      if (err.name === 'AbortError') {
-        // Handled cleanly by handleStop
+      if (err.name === 'AbortError' || controller.signal.aborted) {
+        // Handled cleanly by handleStop / cancellation
         return;
       }
       setStatus('error');
       updateMessage(assistantMsgId, {
         content: "I ran into a small issue — could you try again? I'm working on it.",
       });
-      setTimeout(() => setStatus('active'), 3000);
-      activeAbortControllerRef.current = null;
-      activeMessageIdRef.current = null;
+      setTimeout(() => {
+        if (activeAbortControllerRef.current === null) {
+          setStatus('active');
+        }
+      }, 3000);
+    } finally {
+      // Guard against an older request's cleanup resetting the state of a newer request
+      if (activeAbortControllerRef.current === controller) {
+        activeAbortControllerRef.current = null;
+        if (activeMessageIdRef.current === assistantMsgId) {
+          activeMessageIdRef.current = null;
+        }
+        if (useCompanionStore.getState().status === 'thinking') {
+          setStatus('active');
+        }
+      }
     }
   }, [userId, addMessage, updateMessage, addContextItem, setStatus, setSessionId, setActiveSection]);
 
