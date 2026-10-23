@@ -107,6 +107,7 @@ export class Footer {
       if (text || imagePayload) {
         if (onSend) onSend(text, imagePayload);
         input.value = '';
+        input.focus();
         clearAttachedImage();
       }
     };
@@ -118,13 +119,15 @@ export class Footer {
       }
     };
 
-    btnSend.addEventListener('click', () => {
+    btnSend.addEventListener('click', (e) => {
+      e.preventDefault();
       unlockAudio();
       triggerSend();
     });
 
-    input.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
         unlockAudio();
         triggerSend();
       }
