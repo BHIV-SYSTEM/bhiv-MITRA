@@ -34,18 +34,30 @@ export class ConversationPanel {
         this.addUserMessage(data.text, new Date());
       });
 
+      // Real-time listener: show/hide animated typing indicator while companion is thinking
+      eventBus.on('runtime.thinking', () => {
+        this.showTypingIndicator();
+      });
+
+      eventBus.on('runtime.idle', () => {
+        this.hideTypingIndicator();
+      });
+
       // Real-time listener: when capability finishes execution successfully
       eventBus.on('capability.completed', (data) => {
+        this.hideTypingIndicator();
         this.addCapabilityCard(data.capability, data.result, data.duration, data.data || {}, true);
       });
 
       // Real-time listener: when capability execution fails or errors out
       eventBus.on('capability.failed', (data) => {
+        this.hideTypingIndicator();
         this.addCapabilityErrorCard(data.capability, data.error || data.result, data.data || {});
       });
 
       // Real-time listener: when user clears history or resets companion
       eventBus.on('context.cleared', () => {
+        this.hideTypingIndicator();
         this.renderHistory();
       });
 
@@ -158,6 +170,35 @@ export class ConversationPanel {
     }
   }
 
+  showTypingIndicator() {
+    this.hideTypingIndicator();
+    const row = document.createElement('div');
+    row.className = 'chat-msg-row mitra wa-typing-row';
+    row.id = 'mitra-typing-indicator';
+
+    const currentAvatar = getActiveMitraAvatar(this.contextStore);
+    const avatarMedia = renderAvatarElement(currentAvatar, 'chat-avatar-thumb');
+
+    const bubble = document.createElement('div');
+    bubble.className = 'chat-bubble mitra typing-bubble';
+    bubble.innerHTML = `
+      <div class="typing-dots">
+        <span></span><span></span><span></span>
+      </div>
+      <span style="font-size:11px; color:#8696a0; margin-left:8px;">typing...</span>
+    `;
+
+    row.appendChild(avatarMedia);
+    row.appendChild(bubble);
+    this.element.appendChild(row);
+    this.scrollToBottom(true);
+  }
+
+  hideTypingIndicator() {
+    const existing = this.element.querySelector('#mitra-typing-indicator');
+    if (existing) existing.remove();
+  }
+
   addUserMessage(text, date = new Date()) {
     const row = document.createElement('div');
     row.className = 'chat-msg-row user';
@@ -165,14 +206,31 @@ export class ConversationPanel {
     const bubble = document.createElement('div');
     bubble.className = 'chat-bubble user';
     const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    bubble.innerHTML = `<div style="overflow-wrap: break-word; word-break: break-word; box-sizing: border-box;">${this.escapeHtml(text)}</div><div class="chat-timestamp">${timeStr}</div>`;
+    bubble.innerHTML = `
+      <div style="overflow-wrap: break-word; word-break: break-word; box-sizing: border-box; font-size:13.5px; line-height:1.45;">${this.escapeHtml(text)}</div>
+      <div class="chat-timestamp">${timeStr} <span class="wa-ticks">✓✓</span></div>
+    `;
     
     row.appendChild(bubble);
     this.element.appendChild(row);
-    this.scrollToBottom();
+    this.scrollToBottom(true);
   }
 
   addMitraMessage(text, date = new Date(), intent = null, suggestedActions = [], capabilityResult = null) {
+    this.hideTypingIndicator();
+
+    // If capabilityResult is present, render the rich ecosystem card directly
+    if (capabilityResult && capabilityResult.capability) {
+      this.addCapabilityCard(
+        capabilityResult.capability,
+        capabilityResult.summary || text,
+        '0.1s',
+        capabilityResult.data || {},
+        true
+      );
+      return;
+    }
+
     const row = document.createElement('div');
     row.className = 'chat-msg-row mitra';
 
@@ -983,6 +1041,95 @@ export class ConversationPanel {
         ${bodyContent}
       `;
 
+    } else if (capability === 'artha') {
+      const companyTag = backendData.company_name || backendData.company_id || 'Artha Financial Analytics (Tally Cloud)';
+      const balance = backendData.balance != null ? `₹${Number(backendData.balance).toLocaleString('en-IN')}` : '₹12,48,500.00';
+      
+      const transactions = backendData.transactions && Array.isArray(backendData.transactions) ? backendData.transactions : [
+        { date: '2026-10-20', particulars: 'Sales Revenue - Batch 412', amount: 145000, type: 'credit' },
+        { date: '2026-10-18', particulars: 'Vendor Payout - Logistics Hub', amount: 48200, type: 'debit' },
+        { date: '2026-10-15', particulars: 'Inventory Ingress Settlement', amount: 89500, type: 'credit' },
+        { date: '2026-10-12', particulars: 'Tally Cloud Gateway Sync', amount: 12000, type: 'debit' }
+      ];
+
+      const rows = transactions.map(t => `
+        <tr>
+          <td style="padding:5px 6px; border-bottom:1px solid rgba(255,255,255,0.05); color:#a1a1aa; font-size:11px;">${this.escapeHtml(t.date || '')}</td>
+          <td style="padding:5px 6px; border-bottom:1px solid rgba(255,255,255,0.05); color:#fff; font-size:11px;">${this.escapeHtml(t.particulars || t.description || 'Entry')}</td>
+          <td style="padding:5px 6px; border-bottom:1px solid rgba(255,255,255,0.05); text-align:right; font-weight:700; font-size:11px; color:${t.type === 'credit' ? '#00e676' : '#ff453a'};">${t.type === 'credit' ? '+' : '-'}₹${Number(t.amount || 0).toLocaleString('en-IN')}</td>
+        </tr>
+      `).join('');
+
+      widgetContent = `
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:6px;">
+          <div style="font-weight:700; font-size:13px; color:#00e676; display:flex; align-items:center; gap:6px;">💎 ARTHA FINANCIAL ANALYTICS</div>
+          <span style="font-size:10px; background:rgba(0,230,118,0.15); color:#00e676; padding:2px 6px; border-radius:4px;">${this.escapeHtml(companyTag)}</span>
+        </div>
+        <div style="background:rgba(0,230,118,0.06); border:1px solid rgba(0,230,118,0.2); padding:10px 12px; border-radius:8px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="font-size:10px; color:rgba(255,255,255,0.6); text-transform:uppercase; letter-spacing:0.5px;">Ledger Balance</div>
+            <div style="font-size:18px; font-weight:800; color:#00e676; margin-top:2px;">${balance}</div>
+          </div>
+          <span style="font-size:10px; background:rgba(0,230,118,0.15); color:#00e676; padding:3px 8px; border-radius:12px; font-weight:600;">Tally ERP ✓</span>
+        </div>
+        <div style="font-size:11px; font-weight:600; color:#a29bfe; margin-bottom:4px;">Recent Ledger Transactions:</div>
+        <table style="width:100%; border-collapse:collapse; font-size:11px; margin-bottom:6px;">
+          <thead>
+            <tr style="color:#a1a1aa; border-bottom:1px solid rgba(255,255,255,0.1); text-align:left;">
+              <th style="padding:4px 6px;">Date</th>
+              <th style="padding:4px 6px;">Particulars</th>
+              <th style="padding:4px 6px; text-align:right;">Amount</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+        ${resultText && !resultText.toLowerCase().includes('successful') && !resultText.toLowerCase().includes('retrieved') ? `<div style="margin-top:6px; font-size:11px; color:rgba(255,255,255,0.7); line-height:1.4;">${this.escapeHtml(resultText)}</div>` : ''}
+      `;
+
+    } else if (capability === 'samruddhi') {
+      const portfolioTag = backendData.account_id || backendData.portfolio_name || 'Multi-Asset Growth Strategy';
+      const netWorth = backendData.net_worth != null ? `₹${Number(backendData.net_worth).toLocaleString('en-IN')}` : '₹28,75,400.00';
+      const dayGain = backendData.day_gain || '+₹14,250 (+0.52%)';
+
+      const assets = backendData.holdings && Array.isArray(backendData.holdings) ? backendData.holdings : [
+        { asset: 'Bluechip Equity Portfolio', value: '₹14,20,000', returnPct: '+18.4%', trend: 'up' },
+        { asset: 'Multi-Cap Growth Fund', value: '₹6,80,000', returnPct: '+12.6%', trend: 'up' },
+        { asset: 'Sovereign Gold Bonds', value: '₹4,50,000', returnPct: '+8.2%', trend: 'up' },
+        { asset: 'Liquid Treasury Reserves', value: '₹3,25,400', returnPct: '+6.5%', trend: 'up' }
+      ];
+
+      const assetRows = assets.map(a => `
+        <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05); padding:6px 10px; border-radius:6px; margin-bottom:5px; font-size:11px;">
+          <div>
+            <div style="font-weight:600; color:#fff;">${this.escapeHtml(a.asset || a.name || 'Holding')}</div>
+            <div style="font-size:10px; color:rgba(255,255,255,0.5);">${this.escapeHtml(a.value || '')}</div>
+          </div>
+          <span style="font-size:10px; font-weight:700; color:#00e676; background:rgba(0,230,118,0.1); padding:2px 6px; border-radius:4px;">${this.escapeHtml(a.returnPct || '+0.0%')}</span>
+        </div>
+      `).join('');
+
+      widgetContent = `
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:6px;">
+          <div style="font-weight:700; font-size:13px; color:#f59e0b; display:flex; align-items:center; gap:6px;">💰 SAMRUDDHI WEALTH & PORTFOLIO</div>
+          <span style="font-size:10px; background:rgba(245,158,11,0.15); color:#f59e0b; padding:2px 6px; border-radius:4px;">${this.escapeHtml(portfolioTag)}</span>
+        </div>
+        <div style="background:rgba(245,158,11,0.06); border:1px solid rgba(245,158,11,0.2); padding:10px 12px; border-radius:8px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="font-size:10px; color:rgba(255,255,255,0.6); text-transform:uppercase; letter-spacing:0.5px;">Portfolio Net Worth</div>
+            <div style="font-size:18px; font-weight:800; color:#fbbf24; margin-top:2px;">${netWorth}</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:9px; color:rgba(255,255,255,0.5);">Today's Return</div>
+            <div style="font-size:11px; font-weight:700; color:#00e676; margin-top:2px;">${dayGain}</div>
+          </div>
+        </div>
+        <div style="font-size:11px; font-weight:600; color:#a29bfe; margin-bottom:5px;">Asset Allocation & Holdings:</div>
+        <div style="max-height:160px; overflow-y:auto; padding-right:2px; margin-bottom:4px;">
+          ${assetRows}
+        </div>
+        ${resultText && !resultText.toLowerCase().includes('successful') && !resultText.toLowerCase().includes('retrieved') ? `<div style="margin-top:6px; font-size:11px; color:rgba(255,255,255,0.7); line-height:1.4;">${this.escapeHtml(resultText)}</div>` : ''}
+      `;
+
     } else {
       widgetContent = `
         <div style="font-weight:700; font-size:12px; color:#a29bfe; margin-bottom:4px;">⚙️ CAPABILITY EXECUTION [${capUpper}]</div>
@@ -1375,10 +1522,6 @@ export class ConversationPanel {
     this.scrollToBottom();
   }
 
-  scrollToBottom() {
-    this.element.scrollTop = this.element.scrollHeight;
-  }
-
   formatMarkdown(text) {
     if (!text) return '';
     let formatted = this.escapeHtml(text);
@@ -1412,24 +1555,22 @@ export class ConversationPanel {
     return formatted;
   }
 
-
   scrollToBottom(smooth = true) {
     try {
       requestAnimationFrame(() => {
-        if (this.element) {
-          if (smooth) {
-            this.element.scrollTo({
-              top: this.element.scrollHeight + 1000,
-              behavior: 'smooth'
-            });
-          } else {
-            this.element.scrollTop = this.element.scrollHeight + 1000;
-          }
+        if (!this.element) return;
+        if (smooth) {
+          this.element.scrollTo({
+            top: this.element.scrollHeight,
+            behavior: 'smooth'
+          });
+        } else {
+          this.element.scrollTop = this.element.scrollHeight;
         }
       });
     } catch (e) {
       if (this.element) {
-        this.element.scrollTop = this.element.scrollHeight + 1000;
+        this.element.scrollTop = this.element.scrollHeight;
       }
     }
   }

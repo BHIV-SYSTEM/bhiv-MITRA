@@ -159,6 +159,7 @@ class MitraCompanion extends HTMLElement {
       }
       mitraButton.hide();
       mitraWindow.expand();
+      this.style.setProperty('pointer-events', 'auto', 'important');
       if (contextStore.setWindowState) contextStore.setWindowState('expanded');
       window.dispatchEvent(new CustomEvent('mitra:orb-state-changed', { detail: { open: true } }));
     });
