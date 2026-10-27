@@ -553,6 +553,18 @@ const AuthModal: React.FC<Props> = ({ open, onClose }) => {
                     <span className="truncate">Microsoft</span>
                   </button>
                 </div>
+
+                {/* Legal notice */}
+                <p className="mt-4 text-center text-[10px] text-text-muted leading-relaxed">
+                  By continuing, you agree to MITRA's{' '}
+                  <a href="/terms.html" target="_blank" rel="noopener noreferrer" className="text-brand-light underline hover:text-white">
+                    Terms of Service
+                  </a>{' '}
+                  and{' '}
+                  <a href="/privacy.html" target="_blank" rel="noopener noreferrer" className="text-brand-light underline hover:text-white">
+                    Privacy Policy
+                  </a>.
+                </p>
               </div>
             )}
           </motion.div>

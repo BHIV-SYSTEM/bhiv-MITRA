@@ -270,6 +270,23 @@ export class SettingsModal {
           </div>
         </div>
 
+        <!-- 6. LEGAL & POLICIES -->
+        <div>
+          <div style="font-size:11px; font-weight:700; color:rgba(255,255,255,0.5); letter-spacing:0.5px; margin-bottom:6px;">🛡️ LEGAL &amp; POLICIES</div>
+          <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); padding:10px 12px; border-radius:8px; font-size:12px; display:flex; align-items:center; justify-content:space-between;">
+            <div style="display:flex; gap:16px;">
+              <a href="/terms.html" target="_blank" rel="noopener noreferrer" style="color:#a29bfe; text-decoration:none; font-weight:600; display:flex; align-items:center; gap:4px;">
+                📜 Terms of Service ↗
+              </a>
+              <span style="color:rgba(255,255,255,0.3);">|</span>
+              <a href="/privacy.html" target="_blank" rel="noopener noreferrer" style="color:#a29bfe; text-decoration:none; font-weight:600; display:flex; align-items:center; gap:4px;">
+                🔒 Privacy Policy ↗
+              </a>
+            </div>
+            <span style="font-size:10px; color:rgba(255,255,255,0.4);">Meta Verified</span>
+          </div>
+        </div>
+
         <!-- Modal Footer Actions -->
         <div style="display:flex; justify-content:flex-end; gap:10px; border-top:1px solid rgba(255,255,255,0.08); padding-top:14px;">
           <button id="btn-close-settings-footer" style="background:#6C5CE7; border:none; color:#fff; padding:8px 20px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer;">Done</button>

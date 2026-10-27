@@ -6,8 +6,60 @@ export class ConversationPanel {
     this.element = document.createElement('div');
     this.element.className = 'mitra-chat';
     this.element.id = 'chat-container';
+    this.element.setAttribute('tabindex', '0');
     this.eventBus = eventBus;
     this.contextStore = contextStore;
+
+    // Dedicated smooth mouse wheel & trackpad scroll handler
+    this.element.addEventListener('wheel', (e) => {
+      if (this.element.scrollHeight > this.element.clientHeight) {
+        let delta = e.deltaY;
+        if (e.deltaMode === 1) delta *= 28;
+        else if (e.deltaMode === 2) delta *= this.element.clientHeight;
+        this.element.scrollTop += delta;
+      }
+    }, { passive: true });
+
+    // Touch gesture scrolling for touchscreens and mobile
+    let touchStartY = 0;
+    let touchStartScrollTop = 0;
+    this.element.addEventListener('touchstart', (e) => {
+      if (e.touches && e.touches.length > 0) {
+        touchStartY = e.touches[0].clientY;
+        touchStartScrollTop = this.element.scrollTop;
+      }
+    }, { passive: true });
+
+    this.element.addEventListener('touchmove', (e) => {
+      if (e.touches && e.touches.length > 0) {
+        const delta = touchStartY - e.touches[0].clientY;
+        this.element.scrollTop = touchStartScrollTop + delta;
+      }
+    }, { passive: true });
+
+    // WhatsApp style floating scroll-to-bottom button
+    this.scrollBottomBtn = document.createElement('button');
+    this.scrollBottomBtn.className = 'mitra-scroll-bottom-btn';
+    this.scrollBottomBtn.setAttribute('title', 'Scroll to latest messages');
+    this.scrollBottomBtn.setAttribute('aria-label', 'Scroll to bottom');
+    this.scrollBottomBtn.innerHTML = `
+      <svg viewBox="0 0 24 24">
+        <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/>
+      </svg>
+    `;
+    this.scrollBottomBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.scrollToBottom(true, true);
+    });
+
+    this.element.addEventListener('scroll', () => {
+      const distanceFromBottom = this.element.scrollHeight - this.element.scrollTop - this.element.clientHeight;
+      if (distanceFromBottom > 100) {
+        this.scrollBottomBtn.classList.add('visible');
+      } else {
+        this.scrollBottomBtn.classList.remove('visible');
+      }
+    }, { passive: true });
     
     // Load existing history on creation
     this.renderHistory();
@@ -213,7 +265,7 @@ export class ConversationPanel {
     
     row.appendChild(bubble);
     this.element.appendChild(row);
-    this.scrollToBottom(true);
+    this.scrollToBottom(true, true);
   }
 
   addMitraMessage(text, date = new Date(), intent = null, suggestedActions = [], capabilityResult = null) {
@@ -1555,10 +1607,17 @@ export class ConversationPanel {
     return formatted;
   }
 
-  scrollToBottom(smooth = true) {
+  scrollToBottom(smooth = true, force = false) {
     try {
       requestAnimationFrame(() => {
         if (!this.element) return;
+        // If not forced, do not interrupt reading if user has scrolled up
+        if (!force) {
+          const distanceFromBottom = this.element.scrollHeight - this.element.scrollTop - this.element.clientHeight;
+          if (distanceFromBottom > 160) {
+            return;
+          }
+        }
         if (smooth) {
           this.element.scrollTo({
             top: this.element.scrollHeight,

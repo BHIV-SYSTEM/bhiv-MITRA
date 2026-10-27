@@ -775,6 +775,15 @@ const InputBar: React.FC<Props> = ({ onSend, onStop, disabled }) => {
                 <span>for Command Palette</span>
               </span>
             </div>
+
+            {/* Legal Links Bar */}
+            <div className="flex items-center justify-center gap-2 text-[10px] text-text-muted/60 pt-0.5">
+              <span>MITRA AI can make mistakes. Verify important info.</span>
+              <span>·</span>
+              <a href="/terms.html" target="_blank" rel="noopener noreferrer" className="hover:text-brand-light transition-colors underline decoration-dotted">Terms of Service</a>
+              <span>·</span>
+              <a href="/privacy.html" target="_blank" rel="noopener noreferrer" className="hover:text-brand-light transition-colors underline decoration-dotted">Privacy Policy</a>
+            </div>
           </>
         )}
       </div>

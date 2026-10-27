@@ -1,7 +1,7 @@
 // components/shell/SettingsModal.tsx — Settings with theme toggle & user profile
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Sun, Moon, Monitor, User, Key, Palette, Info, Check, Sparkles } from 'lucide-react';
+import { X, Sun, Moon, Monitor, User, Key, Palette, Info, Check, Sparkles, Shield } from 'lucide-react';
 import { useCompanionStore } from '../../store/companion.store';
 import { showToast } from './Toast';
 
@@ -140,6 +140,20 @@ const SettingsModal: React.FC<Props> = ({ open, onClose }) => {
                 <h3 className="settings-section-title"><Info size={14} /> About</h3>
                 <p className="settings-about">Mitra v5.0.0 — Universal AI Companion</p>
                 <p className="settings-about-sub">11 capabilities · Email · Calendar · WhatsApp · Tasks · Reminders</p>
+              </section>
+
+              {/* Legal & Compliance */}
+              <section className="settings-section">
+                <h3 className="settings-section-title"><Shield size={14} /> Legal & Compliance</h3>
+                <div className="flex items-center gap-3 mt-2 text-xs">
+                  <a href="/terms.html" target="_blank" rel="noopener noreferrer" className="text-brand-light hover:underline flex items-center gap-1 font-medium">
+                    Terms of Service ↗
+                  </a>
+                  <span className="text-text-muted">·</span>
+                  <a href="/privacy.html" target="_blank" rel="noopener noreferrer" className="text-brand-light hover:underline flex items-center gap-1 font-medium">
+                    Privacy Policy ↗
+                  </a>
+                </div>
               </section>
             </div>
 

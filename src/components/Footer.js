@@ -45,6 +45,15 @@ export class Footer {
           <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
         </button>
       </div>
+
+      <!-- Legal Links Bar -->
+      <div style="display:flex; justify-content:center; align-items:center; gap:8px; padding:3px 16px 7px; font-size:10px; color:rgba(255,255,255,0.4); border-top:1px solid rgba(255,255,255,0.04);">
+        <span>MITRA AI</span>
+        <span>·</span>
+        <a href="/terms.html" target="_blank" rel="noopener noreferrer" style="color:#a29bfe; text-decoration:none;">Terms of Service</a>
+        <span>·</span>
+        <a href="/privacy.html" target="_blank" rel="noopener noreferrer" style="color:#a29bfe; text-decoration:none;">Privacy Policy</a>
+      </div>
     `;
 
     const input = this.element.querySelector('#chat-input');

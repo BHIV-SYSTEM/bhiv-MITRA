@@ -128,6 +128,21 @@ const DesktopSidebar: React.FC<Props> = ({
             )}
           </AnimatePresence>
         </button>
+
+        <AnimatePresence>
+          {!collapsed && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="pt-2 px-1 flex items-center justify-center gap-2 text-[10px] text-text-muted/70"
+            >
+              <a href="/terms.html" target="_blank" rel="noopener noreferrer" className="hover:text-brand-light transition-colors">Terms</a>
+              <span>·</span>
+              <a href="/privacy.html" target="_blank" rel="noopener noreferrer" className="hover:text-brand-light transition-colors">Privacy</a>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </aside>
   );
@@ -259,6 +274,11 @@ const MobileSidebarDrawer: React.FC<Props> = ({
                 <Settings size={16} />
                 <span className="text-sm font-medium">Settings</span>
               </button>
+              <div className="pt-2 flex items-center justify-center gap-3 text-xs text-text-muted/70">
+                <a href="/terms.html" target="_blank" rel="noopener noreferrer" className="hover:text-brand-light transition-colors">Terms of Service</a>
+                <span>·</span>
+                <a href="/privacy.html" target="_blank" rel="noopener noreferrer" className="hover:text-brand-light transition-colors">Privacy Policy</a>
+              </div>
             </div>
           </motion.aside>
         </>

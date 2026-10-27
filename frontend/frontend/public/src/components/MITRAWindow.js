@@ -1,7 +1,7 @@
-import { Header } from './Header.js?v=v25';
-import { ConversationPanel } from './ConversationPanel.js?v=25';
-import { Footer } from './Footer.js';
-import { CapabilityLauncher } from './CapabilityLauncher.js';
+import { Header } from './Header.js?v=v27';
+import { ConversationPanel } from './ConversationPanel.js?v=v27';
+import { Footer } from './Footer.js?v=v27';
+import { CapabilityLauncher } from './CapabilityLauncher.js?v=v27';
 import { HealthPanel } from './HealthPanel.js';
 import { ActivityIndicator } from './ActivityIndicator.js';
 import { renderAvatarElement, getActiveMitraAvatar } from '../services/avatarHelper.js';
@@ -36,7 +36,7 @@ export class MITRAWindow {
       if (window.__mitra_notif_drawer) {
         window.__mitra_notif_drawer.toggle();
       } else {
-        import('./NotificationDrawer.js?v=v25').then(({ NotificationDrawer }) => {
+        import('./NotificationDrawer.js?v=v26').then(({ NotificationDrawer }) => {
           window.__mitra_notif_drawer = new NotificationDrawer(this.eventBus);
           document.body.appendChild(window.__mitra_notif_drawer.element);
           window.__mitra_notif_drawer.open();
@@ -96,6 +96,11 @@ export class MITRAWindow {
     this.launcher = new CapabilityLauncher(
       () => {}, 
       (capability, intent) => {
+        if (capability === 'legal') {
+          window.open('/privacy.html', '_blank', 'noopener,noreferrer');
+          return;
+        }
+
         if (capability === 'settings') {
           if (!window.__mitra_settings_modal) {
             import('./SettingsModal.js').then(({ SettingsModal }) => {
@@ -189,6 +194,9 @@ export class MITRAWindow {
     contentArea.className = 'mitra-content';
     contentArea.appendChild(this.conversation.element);
     contentArea.appendChild(this.launcher.element);
+    if (this.conversation.scrollBottomBtn) {
+      contentArea.appendChild(this.conversation.scrollBottomBtn);
+    }
     this.element.appendChild(contentArea);
 
     this.element.appendChild(this.activityIndicator.element);

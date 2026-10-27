@@ -268,6 +268,11 @@ const Login: React.FC<LoginProps> = ({ onToggleForm }) => {
                 Sign up
               </button>
             </p>
+            <div className="mt-4 flex items-center justify-center gap-3 text-xs text-gray-500">
+              <a href="/terms.html" target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 transition-colors">Terms of Service</a>
+              <span>·</span>
+              <a href="/privacy.html" target="_blank" rel="noopener noreferrer" className="hover:text-gray-300 transition-colors">Privacy Policy</a>
+            </div>
           </div>
         </div>
       </div>
