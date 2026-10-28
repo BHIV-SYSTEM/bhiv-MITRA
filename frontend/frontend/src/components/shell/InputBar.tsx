@@ -780,9 +780,27 @@ const InputBar: React.FC<Props> = ({ onSend, onStop, disabled }) => {
             <div className="flex items-center justify-center gap-2 text-[10px] text-text-muted/60 pt-0.5">
               <span>MITRA AI can make mistakes. Verify important info.</span>
               <span>·</span>
-              <a href="/terms.html" target="_blank" rel="noopener noreferrer" className="hover:text-brand-light transition-colors underline decoration-dotted">Terms of Service</a>
+              <button
+                type="button"
+                onClick={() => {
+                  window.history.pushState({}, '', '/terms');
+                  (window as any).__MITRA_NAV__?.('terms');
+                }}
+                className="hover:text-brand-light transition-colors underline decoration-dotted cursor-pointer bg-transparent border-0 p-0 text-[10px] text-text-muted/60"
+              >
+                Terms of Service
+              </button>
               <span>·</span>
-              <a href="/privacy.html" target="_blank" rel="noopener noreferrer" className="hover:text-brand-light transition-colors underline decoration-dotted">Privacy Policy</a>
+              <button
+                type="button"
+                onClick={() => {
+                  window.history.pushState({}, '', '/privacy');
+                  (window as any).__MITRA_NAV__?.('privacy');
+                }}
+                className="hover:text-brand-light transition-colors underline decoration-dotted cursor-pointer bg-transparent border-0 p-0 text-[10px] text-text-muted/60"
+              >
+                Privacy Policy
+              </button>
             </div>
           </>
         )}

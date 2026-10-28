@@ -22,6 +22,8 @@ import WorkflowsPage from './components/pages/WorkflowsPage';
 import KnowledgePage from './components/pages/KnowledgePage';
 import AnalyticsPage from './components/pages/AnalyticsPage';
 import Login from './components/auth/Login';
+import TermsPage from './components/pages/TermsPage';
+import PrivacyPage from './components/pages/PrivacyPage';
 import { useCompanionStore, useIsMobile, toggleMitraChatbotWindow } from './store/companion.store';
 import { CompanionService } from './services/companion.service';
 import { getAuthToken, setAuthToken, getApiBase, getAuthHeaders } from './services/apiConfig';
@@ -115,7 +117,10 @@ const App: React.FC = () => {
   } = useCompanionStore();
 
   const [activeSection, setActiveSection] = useState(() => {
-    return (window.location.pathname === '/login' || window.location.hash === '#login') ? 'login' : 'chat';
+    const p = (window.location.pathname || '').toLowerCase();
+    if (p.includes('privacy')) return 'privacy';
+    if (p.includes('terms')) return 'terms';
+    return (p === '/login' || window.location.hash === '#login') ? 'login' : 'chat';
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [focusOpen, setFocusOpen] = useState(false);
@@ -129,11 +134,14 @@ const App: React.FC = () => {
     (window as any).__MITRA_SETTINGS__ = () => setSettingsOpen(true);
     (window as any).__MITRA_INTEGRATIONS__ = () => setIntegrationsOpen(true);
 
-    if (window.location.pathname === '/privacy' || window.location.pathname === '/privacy/') {
-      window.location.replace('/privacy.html');
-    } else if (window.location.pathname === '/terms' || window.location.pathname === '/terms/') {
-      window.location.replace('/terms.html');
-    }
+    const handlePopState = () => {
+      const p = (window.location.pathname || '').toLowerCase();
+      if (p.includes('privacy')) setActiveSection('privacy');
+      else if (p.includes('terms')) setActiveSection('terms');
+      else if (p === '/login' || window.location.hash === '#login') setActiveSection('login');
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
   // Listen for real <mitra-companion> Floating Orb state changes (Ashwini's orb)
@@ -515,6 +523,8 @@ const App: React.FC = () => {
         {activeSection === 'workflows' && <WorkflowsPage onChatNavigate={handleChatNavigate} />}
         {activeSection === 'knowledge' && <KnowledgePage onChatNavigate={handleChatNavigate} />}
         {activeSection === 'login' && <Login onToggleForm={() => setActiveSection('chat')} />}
+        {activeSection === 'terms' && <TermsPage onBackToChat={() => setActiveSection('chat')} />}
+        {activeSection === 'privacy' && <PrivacyPage onBackToChat={() => setActiveSection('chat')} />}
       </div>
 
       {/* Bottom Chat Bar — grid-area 'input' */}

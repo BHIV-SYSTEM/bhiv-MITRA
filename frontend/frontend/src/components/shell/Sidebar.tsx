@@ -137,9 +137,27 @@ const DesktopSidebar: React.FC<Props> = ({
               exit={{ opacity: 0 }}
               className="pt-2 px-1 flex items-center justify-center gap-2 text-[10px] text-text-muted/70"
             >
-              <a href="/terms.html" target="_blank" rel="noopener noreferrer" className="hover:text-brand-light transition-colors">Terms</a>
+              <button
+                type="button"
+                onClick={() => {
+                  window.history.pushState({}, '', '/terms');
+                  onSectionChange?.('terms');
+                }}
+                className="hover:text-brand-light transition-colors cursor-pointer bg-transparent border-0 p-0 text-[10px] text-text-muted/70"
+              >
+                Terms
+              </button>
               <span>·</span>
-              <a href="/privacy.html" target="_blank" rel="noopener noreferrer" className="hover:text-brand-light transition-colors">Privacy</a>
+              <button
+                type="button"
+                onClick={() => {
+                  window.history.pushState({}, '', '/privacy');
+                  onSectionChange?.('privacy');
+                }}
+                className="hover:text-brand-light transition-colors cursor-pointer bg-transparent border-0 p-0 text-[10px] text-text-muted/70"
+              >
+                Privacy
+              </button>
             </motion.div>
           )}
         </AnimatePresence>
@@ -275,9 +293,27 @@ const MobileSidebarDrawer: React.FC<Props> = ({
                 <span className="text-sm font-medium">Settings</span>
               </button>
               <div className="pt-2 flex items-center justify-center gap-3 text-xs text-text-muted/70">
-                <a href="/terms.html" target="_blank" rel="noopener noreferrer" className="hover:text-brand-light transition-colors">Terms of Service</a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.history.pushState({}, '', '/terms');
+                    onSectionChange?.('terms');
+                  }}
+                  className="hover:text-brand-light transition-colors cursor-pointer bg-transparent border-0 p-0 text-xs text-text-muted/70"
+                >
+                  Terms of Service
+                </button>
                 <span>·</span>
-                <a href="/privacy.html" target="_blank" rel="noopener noreferrer" className="hover:text-brand-light transition-colors">Privacy Policy</a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.history.pushState({}, '', '/privacy');
+                    onSectionChange?.('privacy');
+                  }}
+                  className="hover:text-brand-light transition-colors cursor-pointer bg-transparent border-0 p-0 text-xs text-text-muted/70"
+                >
+                  Privacy Policy
+                </button>
               </div>
             </div>
           </motion.aside>
