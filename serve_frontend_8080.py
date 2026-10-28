@@ -20,6 +20,31 @@ class SPAHandler(http.server.SimpleHTTPRequestHandler):
         if os.path.exists(local_path) and os.path.isfile(local_path):
             return super().do_GET()
 
+        # Handle clean URLs for privacy and terms
+        if req_path.rstrip("/") in ["/privacy", "/privacy.html"]:
+            privacy_file = os.path.join(BUILD_DIR, "privacy.html")
+            if os.path.exists(privacy_file):
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                with open(privacy_file, "rb") as f:
+                    content = f.read()
+                self.send_header("Content-Length", str(len(content)))
+                self.end_headers()
+                self.wfile.write(content)
+                return
+
+        if req_path.rstrip("/") in ["/terms", "/terms.html"]:
+            terms_file = os.path.join(BUILD_DIR, "terms.html")
+            if os.path.exists(terms_file):
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                with open(terms_file, "rb") as f:
+                    content = f.read()
+                self.send_header("Content-Length", str(len(content)))
+                self.end_headers()
+                self.wfile.write(content)
+                return
+
         # For SPA client routes (like /auth/callback, /settings, /dashboard), serve index.html
         index_file = os.path.join(BUILD_DIR, "index.html")
         if os.path.exists(index_file):
@@ -48,17 +73,18 @@ class DualStackServer(http.server.ThreadingHTTPServer):
     def server_bind(self):
         with contextlib.suppress(Exception):
             self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
-        return super().server_bind()
+        super().server_bind()
 
 if __name__ == "__main__":
-    DualStackServer.allow_reuse_address = True
-    DualStackServer.address_family = socket.AF_INET6
+    if not os.path.exists(BUILD_DIR):
+        print(f"[ERROR] Build directory not found at: {BUILD_DIR}")
+        print("Please run 'npm run build' inside frontend/frontend first.")
+        sys.exit(1)
+
+    print(f"[STARTING] Serving Raj MITRA SPA on http://localhost:{PORT}")
+    print(f"[SOURCE] Build directory: {BUILD_DIR}")
+    server = DualStackServer(("", PORT), SPAHandler)
     try:
-        with DualStackServer(("", PORT), SPAHandler) as httpd:
-            print(f"Raj MITRA Frontend SPA running on http://localhost:{PORT}")
-            httpd.serve_forever()
-    except Exception:
-        DualStackServer.address_family = socket.AF_INET
-        with DualStackServer(("", PORT), SPAHandler) as httpd:
-            print(f"Raj MITRA Frontend SPA running on http://localhost:{PORT}")
-            httpd.serve_forever()
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\n[STOPPED] Frontend server stopped.")

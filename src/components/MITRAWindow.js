@@ -1,7 +1,7 @@
-import { Header } from './Header.js?v=v27';
-import { ConversationPanel } from './ConversationPanel.js?v=v27';
-import { Footer } from './Footer.js?v=v27';
-import { CapabilityLauncher } from './CapabilityLauncher.js?v=v27';
+import { Header } from './Header.js?v=v34';
+import { ConversationPanel } from './ConversationPanel.js?v=v34';
+import { Footer } from './Footer.js?v=v34';
+import { CapabilityLauncher } from './CapabilityLauncher.js?v=v34';
 import { HealthPanel } from './HealthPanel.js';
 import { ActivityIndicator } from './ActivityIndicator.js';
 import { renderAvatarElement, getActiveMitraAvatar } from '../services/avatarHelper.js';
@@ -201,6 +201,15 @@ export class MITRAWindow {
 
     this.element.appendChild(this.activityIndicator.element);
     this.element.appendChild(this.footer.element);
+
+    // Forward wheel scrolling from header, indicator, or borders to the conversation scroll area
+    this.element.addEventListener('wheel', (e) => {
+      if (this.conversation && this.conversation.element) {
+        if (!this.conversation.element.contains(e.target)) {
+          this.conversation.element.scrollTop += e.deltaY;
+        }
+      }
+    }, { passive: true });
     
     this.onMinimize = null;
   }

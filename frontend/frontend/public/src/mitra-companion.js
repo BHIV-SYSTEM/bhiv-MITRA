@@ -1,12 +1,12 @@
-import { runtimeService } from './services/RuntimeService.js?v=v27';
-import { eventBus } from './services/eventBus.js?v=v27';
-import { MITRAButton } from './components/MITRAButton.js?v=v27';
-import { MITRAWindow } from './components/MITRAWindow.js?v=v27';
-import { NotificationCenter } from './components/NotificationCenter.js?v=v27';
-import { DockController } from './components/DockController.js?v=v27';
-import { contextStore } from './services/contextStore.js?v=v27';
-import { AvatarModal } from './components/AvatarModal.js?v=v27';
-import { initActiveMitraAvatar } from './services/avatarHelper.js?v=v27';
+import { runtimeService } from './services/RuntimeService.js?v=v34';
+import { eventBus } from './services/eventBus.js?v=v34';
+import { MITRAButton } from './components/MITRAButton.js?v=v34';
+import { MITRAWindow } from './components/MITRAWindow.js?v=v34';
+import { NotificationCenter } from './components/NotificationCenter.js?v=v34';
+import { DockController } from './components/DockController.js?v=v34';
+import { contextStore } from './services/contextStore.js?v=v34';
+import { AvatarModal } from './components/AvatarModal.js?v=v34';
+import { initActiveMitraAvatar } from './services/avatarHelper.js?v=v34';
 
 class MitraCompanion extends HTMLElement {
   constructor() {

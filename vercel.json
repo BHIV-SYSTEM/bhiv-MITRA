@@ -4,6 +4,14 @@
   "outputDirectory": "frontend/frontend/build",
   "rewrites": [
     {
+      "source": "/privacy",
+      "destination": "/privacy.html"
+    },
+    {
+      "source": "/terms",
+      "destination": "/terms.html"
+    },
+    {
       "source": "/api/:path*",
       "destination": "https://mitra-backend.onrender.com/api/:path*"
     },

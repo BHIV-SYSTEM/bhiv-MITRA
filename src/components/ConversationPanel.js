@@ -10,32 +10,7 @@ export class ConversationPanel {
     this.eventBus = eventBus;
     this.contextStore = contextStore;
 
-    // Dedicated smooth mouse wheel & trackpad scroll handler
-    this.element.addEventListener('wheel', (e) => {
-      if (this.element.scrollHeight > this.element.clientHeight) {
-        let delta = e.deltaY;
-        if (e.deltaMode === 1) delta *= 28;
-        else if (e.deltaMode === 2) delta *= this.element.clientHeight;
-        this.element.scrollTop += delta;
-      }
-    }, { passive: true });
-
-    // Touch gesture scrolling for touchscreens and mobile
-    let touchStartY = 0;
-    let touchStartScrollTop = 0;
-    this.element.addEventListener('touchstart', (e) => {
-      if (e.touches && e.touches.length > 0) {
-        touchStartY = e.touches[0].clientY;
-        touchStartScrollTop = this.element.scrollTop;
-      }
-    }, { passive: true });
-
-    this.element.addEventListener('touchmove', (e) => {
-      if (e.touches && e.touches.length > 0) {
-        const delta = touchStartY - e.touches[0].clientY;
-        this.element.scrollTop = touchStartScrollTop + delta;
-      }
-    }, { passive: true });
+    this.isUserScrolledUp = false;
 
     // WhatsApp style floating scroll-to-bottom button
     this.scrollBottomBtn = document.createElement('button');
@@ -49,17 +24,37 @@ export class ConversationPanel {
     `;
     this.scrollBottomBtn.addEventListener('click', (e) => {
       e.stopPropagation();
+      this.isUserScrolledUp = false;
       this.scrollToBottom(true, true);
     });
 
+    // Track scroll position to respect user's reading intent
     this.element.addEventListener('scroll', () => {
-      const distanceFromBottom = this.element.scrollHeight - this.element.scrollTop - this.element.clientHeight;
-      if (distanceFromBottom > 100) {
+      const maxScrollTop = this.element.scrollHeight - this.element.clientHeight;
+      const distanceFromBottom = maxScrollTop - this.element.scrollTop;
+      
+      // If user scrolls up by even 25px from bottom, mark user as actively reading earlier messages
+      if (distanceFromBottom > 25) {
+        this.isUserScrolledUp = true;
         this.scrollBottomBtn.classList.add('visible');
       } else {
+        this.isUserScrolledUp = false;
         this.scrollBottomBtn.classList.remove('visible');
       }
     }, { passive: true });
+
+    // Keyboard navigation (PageUp, PageDown, Up/Down arrows)
+    this.element.addEventListener('keydown', (e) => {
+      if (e.key === 'PageUp' || e.key === 'ArrowUp') {
+        this.element.scrollTop -= 120;
+      } else if (e.key === 'PageDown' || e.key === 'ArrowDown') {
+        this.element.scrollTop += 120;
+      } else if (e.key === 'Home') {
+        this.element.scrollTop = 0;
+      } else if (e.key === 'End') {
+        this.element.scrollTop = this.element.scrollHeight;
+      }
+    });
     
     // Load existing history on creation
     this.renderHistory();
@@ -252,6 +247,7 @@ export class ConversationPanel {
   }
 
   addUserMessage(text, date = new Date()) {
+    this.isUserScrolledUp = false;
     const row = document.createElement('div');
     row.className = 'chat-msg-row user';
 
@@ -1611,12 +1607,9 @@ export class ConversationPanel {
     try {
       requestAnimationFrame(() => {
         if (!this.element) return;
-        // If not forced, do not interrupt reading if user has scrolled up
-        if (!force) {
-          const distanceFromBottom = this.element.scrollHeight - this.element.scrollTop - this.element.clientHeight;
-          if (distanceFromBottom > 160) {
-            return;
-          }
+        // If not forced, never interrupt reading if user has scrolled up
+        if (!force && this.isUserScrolledUp) {
+          return;
         }
         if (smooth) {
           this.element.scrollTo({
@@ -1628,7 +1621,7 @@ export class ConversationPanel {
         }
       });
     } catch (e) {
-      if (this.element) {
+      if (this.element && (force || !this.isUserScrolledUp)) {
         this.element.scrollTop = this.element.scrollHeight;
       }
     }

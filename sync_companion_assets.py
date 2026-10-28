@@ -29,4 +29,12 @@ for target_dir in [public_dir, build_dir]:
         shutil.copytree(src_assets, dst_assets, dirs_exist_ok=True)
         print("Synchronized assets/ ->", dst_assets)
 
+    # 4. Legal files (terms.html & privacy.html)
+    for legal_file in ["terms.html", "privacy.html"]:
+        src_legal = os.path.join(root_dir, legal_file)
+        dst_legal = os.path.join(target_dir, legal_file)
+        if os.path.exists(src_legal):
+            shutil.copy2(src_legal, dst_legal)
+            print(f"Synchronized {legal_file} -> {dst_legal}")
+
 print("All synchronization complete!")

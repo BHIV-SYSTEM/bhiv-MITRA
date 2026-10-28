@@ -128,6 +128,12 @@ const App: React.FC = () => {
   useEffect(() => {
     (window as any).__MITRA_SETTINGS__ = () => setSettingsOpen(true);
     (window as any).__MITRA_INTEGRATIONS__ = () => setIntegrationsOpen(true);
+
+    if (window.location.pathname === '/privacy' || window.location.pathname === '/privacy/') {
+      window.location.replace('/privacy.html');
+    } else if (window.location.pathname === '/terms' || window.location.pathname === '/terms/') {
+      window.location.replace('/terms.html');
+    }
   }, []);
 
   // Listen for real <mitra-companion> Floating Orb state changes (Ashwini's orb)

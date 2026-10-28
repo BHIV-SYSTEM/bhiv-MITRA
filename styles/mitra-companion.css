@@ -393,8 +393,8 @@ mitra-companion[hide-fab="true"] #mitra-shell {
   flex: 1 1 0%;
   min-height: 0 !important;
   height: 100%;
-  padding: 16px 16px 20px;
-  overflow-y: auto !important;
+  padding: 16px 16px 42px;
+  overflow-y: scroll !important;
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
@@ -402,8 +402,7 @@ mitra-companion[hide-fab="true"] #mitra-shell {
   box-sizing: border-box;
   pointer-events: auto !important;
   -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.4) rgba(255, 255, 255, 0.05);
+  overscroll-behavior-y: contain;
 }
 
 .mitra-chat:focus {
@@ -411,28 +410,29 @@ mitra-companion[hide-fab="true"] #mitra-shell {
 }
 
 .mitra-chat::-webkit-scrollbar {
-  width: 9px;
+  width: 10px;
 }
 
 .mitra-chat::-webkit-scrollbar-track {
   background: rgba(255, 255, 255, 0.04);
-  border-radius: 6px;
-  margin: 4px 0;
+  border-radius: 8px;
+  margin: 6px 0;
 }
 
 .mitra-chat::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.35);
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.45);
+  border-radius: 8px;
+  border: 2px solid rgba(18, 20, 29, 0.85);
+  min-height: 36px;
 }
 
 .mitra-chat::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 168, 132, 0.85);
-  box-shadow: 0 0 8px rgba(0, 168, 132, 0.4);
+  background: #00a884;
+  box-shadow: 0 0 10px rgba(0, 168, 132, 0.6);
 }
 
 .mitra-chat::-webkit-scrollbar-thumb:active {
-  background: #00a884;
+  background: #00e676;
 }
 
 /* WhatsApp style floating scroll-to-bottom button */
