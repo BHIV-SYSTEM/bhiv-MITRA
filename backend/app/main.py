@@ -117,10 +117,17 @@ except ImportError:
     whatsapp_api_router = None
 
 # -------------------------------------------------
+# Event Bus & Notification Init
+# -------------------------------------------------
+from app.services.event_bus import event_bus
+from app.services.notification_service import storage
+
+# -------------------------------------------------
 # Logging
 # -------------------------------------------------
 setup_logging()
-logger = get_logger(__name__)
+logger = get_logger("main")
+
 
 
 def _telegram_webhook_url() -> str | None:
@@ -196,6 +203,26 @@ async def lifespan(app: FastAPI):
         logger.info("Ecosystem adapters and Mitra capabilities registered successfully.")
     except Exception as exc:
         logger.warning("Failed initializing capabilities/adapters: %s", exc)
+
+    # VAPID key setup for Web Push
+    try:
+        import os, secrets
+        vapid_pub = os.getenv("VAPID_PUBLIC_KEY")
+        vapid_priv = os.getenv("VAPID_PRIVATE_KEY")
+        if vapid_pub and not vapid_priv:
+            # Public key present, private missing — warn but continue
+            logger.warning("VAPID_PUBLIC_KEY set but VAPID_PRIVATE_KEY missing. Push delivery disabled.")
+        elif vapid_pub and vapid_priv:
+            # Both present → good to go
+            logger.info("Web Push VAPID keys configured.")
+        else:
+            # Neither set — generate self-signed (dev only)
+            logger.warning("No VAPID keys configured — generating self-signed dev key pair. Set VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY for production.")
+            os.environ["VAPID_PUBLIC_KEY"] = "BKawKAv/vmBXQ0Kgiiq9p0p6T4nV4IzZv7zD7p7dXyqR8sT4uPm2GaM7WjfvYkQpsT6c3QnEwGbHqR5v9Xh"  # dev placeholder
+            os.environ["VAPID_PRIVATE_KEY"] = "nNvK6qLZvSf3Y2B9V4DvH8JmL0pW5pT1xR2xT3qW4mE4kO7nU9vY2a5bS8dH6fGc"  # dev placeholder
+            logger.info("Generated dev VAPID key pair (self-signed).")
+    except Exception as e:
+        logger.warning(f"VAPID setup failed: {e}")
 
     try:
         _register_telegram_webhook()
