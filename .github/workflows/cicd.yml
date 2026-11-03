@@ -166,7 +166,7 @@ jobs:
             
             # Health Check - Check docker status and query frontend + backend endpoints
             echo "Waiting for services to be healthy..."
-            for i in {1..12}; do
+            for i in {1..18}; do
               if docker compose -f docker-compose.production.yml ps --filter "status=running" --filter "health=unhealthy" -q >/dev/null 2>&1; then
                 UNHEALTHY_COUNT=$(docker compose -f docker-compose.production.yml ps --filter "status=running" --filter "health=unhealthy" -q | wc -l)
                 STARTING_COUNT=$(docker compose -f docker-compose.production.yml ps --filter "status=running" --filter "health=starting" -q | wc -l)
@@ -178,18 +178,22 @@ jobs:
               # MAIN FastAPI backend health check
               API_HEALTH=0
               BACKEND_STATUS=$(docker inspect --format='{{.State.Health.Status}}' mitra_backend 2>/dev/null || echo "missing")
-              [ "$BACKEND_STATUS" = "healthy" ] && API_HEALTH=1
+              if [ "$BACKEND_STATUS" = "healthy" ]; then
+                API_HEALTH=1
+              fi
 
               # FRONTEND health check (port 3007 exposed)
               FRONTEND_HEALTH=0
-              curl -sf http://localhost:3007 > /dev/null && FRONTEND_HEALTH=1
+              if curl -sf http://localhost:3007 > /dev/null 2>&1; then
+                FRONTEND_HEALTH=1
+              fi
               
               if [ "$UNHEALTHY_COUNT" -eq 0 ] && [ "$STARTING_COUNT" -eq 0 ] && [ "$API_HEALTH" -eq 1 ] && [ "$FRONTEND_HEALTH" -eq 1 ]; then
                 echo "All containers, FastAPI backend, and frontend endpoints are healthy!"
                 break
               fi
               
-              if [ "$i" -eq 12 ]; then
+              if [ "$i" -eq 18 ]; then
                 echo "Health check failed!"
                 docker compose -f docker-compose.production.yml ps
                 docker compose -f docker-compose.production.yml logs --tail=50
@@ -280,7 +284,7 @@ jobs:
               docker compose -f docker-compose.production.yml images
               
               echo "Waiting for rollback services to be healthy..."
-              for i in {1..12}; do
+              for i in {1..18}; do
                 if docker compose -f docker-compose.production.yml ps --filter "status=running" --filter "health=unhealthy" -q >/dev/null 2>&1; then
                   UNHEALTHY_COUNT=$(docker compose -f docker-compose.production.yml ps --filter "status=running" --filter "health=unhealthy" -q | wc -l)
                   STARTING_COUNT=$(docker compose -f docker-compose.production.yml ps --filter "status=running" --filter "health=starting" -q | wc -l)
@@ -291,10 +295,14 @@ jobs:
                 
                 API_HEALTH=0
                 BACKEND_STATUS=$(docker inspect --format='{{.State.Health.Status}}' mitra_backend 2>/dev/null || echo "missing")
-                [ "$BACKEND_STATUS" = "healthy" ] && API_HEALTH=1
+                if [ "$BACKEND_STATUS" = "healthy" ]; then
+                  API_HEALTH=1
+                fi
 
                 FRONTEND_HEALTH=0
-                curl -sf http://localhost:3007 > /dev/null && FRONTEND_HEALTH=1
+                if curl -sf http://localhost:3007 > /dev/null 2>&1; then
+                  FRONTEND_HEALTH=1
+                fi
                 
                 if [ "$UNHEALTHY_COUNT" -eq 0 ] && [ "$STARTING_COUNT" -eq 0 ] && [ "$API_HEALTH" -eq 1 ] && [ "$FRONTEND_HEALTH" -eq 1 ]; then
                   echo "Rollback deployment is healthy!"
@@ -302,7 +310,7 @@ jobs:
                   exit 0
                 fi
                 
-                if [ "$i" -eq 12 ]; then
+                if [ "$i" -eq 18 ]; then
                   echo "Rollback health check failed!"
                   echo "| $(date -u +'%Y-%m-%d %H:%M:%S UTC') | $LAST_HEALTHY_TAG | ROLLBACK_FAILED | Rollback from failed ${{ needs.build.outputs.sha_short }} failed health check |" >> docs/RELEASE_HISTORY.md
                   exit 1

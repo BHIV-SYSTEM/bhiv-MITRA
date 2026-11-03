@@ -476,7 +476,8 @@ async def create_calendar_event(event: CalendarEventCreate, user_id: str = "user
         })
 
         # 2. Advance reminder (e.g. 1 day prior)
-        reminder_time = start_dt - timedelta(days=1)
+        safe_start_dt = start_dt if start_dt.tzinfo is not None else start_dt.replace(tzinfo=timezone.utc)
+        reminder_time = safe_start_dt - timedelta(days=1)
         if reminder_time > now:
             adv_time_str = reminder_time.isoformat()
             adv_msg = f"Upcoming Reminder: '{clean_title}' is scheduled for tomorrow at {start_dt.strftime('%I:%M %p')}."

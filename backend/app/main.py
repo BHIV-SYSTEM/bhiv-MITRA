@@ -1,5 +1,6 @@
 import sys
 import os
+import secrets
 from datetime import datetime
 from contextlib import asynccontextmanager
 
@@ -206,7 +207,7 @@ async def lifespan(app: FastAPI):
 
     # VAPID key setup for Web Push
     try:
-        import os, secrets
+        # VAPID keys
         vapid_pub = os.getenv("VAPID_PUBLIC_KEY")
         vapid_priv = os.getenv("VAPID_PRIVATE_KEY")
         if vapid_pub and not vapid_priv:
@@ -480,8 +481,9 @@ async def health_check():
     """Basic health check with MongoDB connectivity probe."""
     mongo_status = "ok"
     try:
+        import asyncio
         from app.core.database import client
-        await client.admin.command("ping")
+        await asyncio.wait_for(client.admin.command("ping"), timeout=1.5)
     except Exception as e:
         mongo_status = f"error: {str(e)}"
 

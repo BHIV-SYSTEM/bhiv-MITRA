@@ -13,9 +13,10 @@ services:
       - mitra_network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 10
+      interval: 10s
+      timeout: 5s
+      start_period: 5s
+      retries: 6
     restart: unless-stopped
 
   frontend:
