@@ -408,7 +408,7 @@ export function toggleMitraChatbotWindow(): boolean {
     let companion = document.querySelector('mitra-companion') as HTMLElement;
     if (!companion && typeof document !== 'undefined') {
       companion = document.createElement('mitra-companion');
-      companion.setAttribute('stylesheet-path', '/styles/mitra-companion.css?v=v41');
+      companion.setAttribute('stylesheet-path', '/styles/mitra-companion.css?v=v51');
       companion.setAttribute('api-base-url', 'https://mitra.blackholeinfiverse.com');
       document.body.appendChild(companion);
     }

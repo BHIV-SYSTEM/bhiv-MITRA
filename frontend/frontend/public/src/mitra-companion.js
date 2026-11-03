@@ -7,7 +7,6 @@ import { DockController } from './components/DockController.js';
 import { contextStore } from './services/contextStore.js';
 import { AvatarModal } from './components/AvatarModal.js';
 import { initActiveMitraAvatar } from './services/avatarHelper.js';
-import { whatsAppClient } from './services/whatsappClient.js';
 
 class MitraCompanion extends HTMLElement {
   constructor() {
@@ -50,10 +49,14 @@ class MitraCompanion extends HTMLElement {
         console.warn('[MITRA] Runtime connect warning:', err);
       });
 
-      // Initialize WhatsApp Web Automation background connection for real-time notifications
-      whatsAppClient.connect().catch((err) => {
-        console.warn('[MITRA] WhatsApp client background connect warning:', err);
-      });
+      // Optional background WhatsApp connection
+      try {
+        import('./services/whatsappClient.js').then(({ whatsAppClient }) => {
+          if (whatsAppClient && typeof whatsAppClient.connect === 'function') {
+            whatsAppClient.connect().catch(() => {});
+          }
+        }).catch(() => {});
+      } catch (e) {}
     } catch (err) {
       console.warn('[MITRA Error Boundary] Caught companion lifecycle error:', err);
     }
