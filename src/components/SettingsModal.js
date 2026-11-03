@@ -1,31 +1,37 @@
 import { controlPlane, getApiBaseUrl } from '../services/controlPlane.js';
 
 export function applyTheme(themeName) {
+  if (typeof document === 'undefined') return;
   const root = document.documentElement;
+  if (!root) return;
   if (themeName === 'Emerald') {
     root.style.setProperty('--mitra-accent', '#00e676');
     root.style.setProperty('--mitra-bg', 'rgba(10, 25, 19, 0.92)');
-    document.body.style.background = '#06140E';
+    if (document.body) document.body.style.background = '#06140E';
   } else if (themeName === 'Violet') {
     root.style.setProperty('--mitra-accent', '#e056fd');
     root.style.setProperty('--mitra-bg', 'rgba(20, 10, 26, 0.92)');
-    document.body.style.background = '#0F0614';
+    if (document.body) document.body.style.background = '#0F0614';
   } else if (themeName === 'Light') {
     root.style.setProperty('--mitra-accent', '#6c5ce7');
     root.style.setProperty('--mitra-bg', 'rgba(255, 255, 255, 0.95)');
     root.style.setProperty('--mitra-text', '#18181b');
-    document.body.style.background = '#F4F4F5';
+    if (document.body) document.body.style.background = '#F4F4F5';
   } else {
     // Midnight (Default)
     root.style.setProperty('--mitra-accent', '#6c5ce7');
     root.style.setProperty('--mitra-bg', 'rgba(20, 20, 24, 0.85)');
     root.style.setProperty('--mitra-text', '#ffffff');
-    document.body.style.background = '#0B0B0E';
+    if (document.body) document.body.style.background = '#0B0B0E';
   }
 }
 
-// Apply stored theme on script load
-applyTheme(localStorage.getItem('mitra_theme') || 'Midnight');
+// Apply stored theme safely on script load
+try {
+  if (typeof localStorage !== 'undefined') {
+    applyTheme(localStorage.getItem('mitra_theme') || 'Midnight');
+  }
+} catch (e) {}
 
 export class SettingsModal {
   constructor() {
@@ -37,7 +43,7 @@ export class SettingsModal {
       top: 0; left: 0; width: 100vw; height: 100vh;
       background: rgba(0, 0, 0, 0.7);
       backdrop-filter: blur(6px);
-      z-index: 99999;
+      z-index: 99999999 !important; pointer-events: auto !important;
       align-items: center; justify-content: center;
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     `;
@@ -146,6 +152,36 @@ export class SettingsModal {
             </div>
           </div>
           
+          <!-- WhatsApp Web Automation Quick Launcher Banner -->
+          <div style="background:rgba(0,230,118,0.08); border:1px solid rgba(0,230,118,0.25); border-radius:8px; padding:10px 12px; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; gap:10px;">
+            <div>
+              <div style="font-size:11.5px; font-weight:700; color:#00e676; display:flex; align-items:center; gap:5px;">
+                <span>⚡</span> WhatsApp Web Automation (Dual Auth)
+              </div>
+              <div style="font-size:10px; color:rgba(255,255,255,0.7); margin-top:2px;">
+                QR Scan & Phone Pairing Code · 15k+ Contact Search · Live Notification Alerts
+              </div>
+            </div>
+            <button id="btn-open-wa-automation" style="background:#00e676; border:none; color:#06140E; padding:6px 12px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap;">
+              Open WhatsApp
+            </button>
+          </div>
+
+          <!-- Telegram Bot Integration Action Banner -->
+          <div style="background:rgba(0,136,204,0.08); border:1px solid rgba(0,136,204,0.25); border-radius:8px; padding:10px 12px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; gap:10px;">
+            <div>
+              <div style="font-size:11.5px; font-weight:700; color:#29b6f6; display:flex; align-items:center; gap:5px;">
+                <span>✈️</span> Telegram AI Bot (@blackhole_mitra_bot)
+              </div>
+              <div style="font-size:10px; color:rgba(255,255,255,0.7); margin-top:2px;">
+                Chat with MITRA AI Assistant directly on Telegram · BotFather API Token Active
+              </div>
+            </div>
+            <a href="https://t.me/blackhole_mitra_bot" target="_blank" rel="noopener noreferrer" style="background:#0088cc; border:none; color:#ffffff; padding:6px 12px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:4px; white-space:nowrap;">
+              Chat on Telegram →
+            </a>
+          </div>
+
           <!-- Mode Tabs -->
           <div style="display:flex; gap:6px; margin-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:8px;">
             <button id="tab-btn-wa-personal" style="flex:1; background:rgba(37,211,102,0.2); border:1px solid #25D366; color:#fff; padding:6px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer;">
@@ -227,7 +263,40 @@ export class SettingsModal {
           </div>
         </div>
 
-        <!-- 3. APPEARANCE -->
+        <!-- 3. SYSTEM & IN-APP NOTIFICATIONS -->
+        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:14px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+            <div style="font-size:12px; font-weight:700; color:#fff; display:flex; align-items:center; gap:6px;">
+              <span>🔔</span> System &amp; In-App Notifications
+            </div>
+            <div id="notif-perm-status" style="font-size:10.5px;">
+              <span style="color:rgba(255,255,255,0.5);">Checking...</span>
+            </div>
+          </div>
+          <div style="font-size:11px; color:rgba(255,255,255,0.7); margin-bottom:12px; line-height:1.4;">
+            Receive real-time desktop push notifications and live in-chat sound chimes for scheduled reminders, alarms, and WhatsApp messages.
+          </div>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <div style="display:flex; align-items:center; justify-content:space-between;">
+              <span style="font-size:11.5px; color:#fff;">Desktop Push Alerts</span>
+              <button id="btn-request-notif-perm" style="background:#6c5ce7; border:none; color:#fff; padding:6px 12px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer;">
+                Enable Notifications
+              </button>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between;">
+              <span style="font-size:11.5px; color:#fff;">Real-time Sound Alerts</span>
+              <span style="font-size:11px; color:#00e676; font-weight:600;">● Active</span>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-top:4px;">
+              <span style="font-size:11px; color:rgba(255,255,255,0.6);">Right Drawer History</span>
+              <button id="btn-open-notif-drawer-settings" style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.2); color:#fff; padding:5px 12px; border-radius:6px; font-size:11px; cursor:pointer;">
+                Open Notifications Drawer 🔔
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. APPEARANCE -->
         <div>
           <div style="font-size:11px; font-weight:700; color:rgba(255,255,255,0.5); letter-spacing:0.5px; margin-bottom:10px;">🎨 APPEARANCE</div>
           <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;">
@@ -358,6 +427,19 @@ export class SettingsModal {
       });
     });
 
+    // ── WhatsApp Web Automation Quick Launcher ──
+    const btnOpenWa = this.element.querySelector('#btn-open-wa-automation');
+    if (btnOpenWa) {
+      btnOpenWa.addEventListener('click', () => {
+        this.close();
+        if (typeof window !== 'undefined' && typeof window.__mitra_open_whatsapp === 'function') {
+          window.__mitra_open_whatsapp();
+        } else if (typeof window !== 'undefined' && typeof window.__MITRA_WHATSAPP_WEB__ === 'function') {
+          window.__MITRA_WHATSAPP_WEB__();
+        }
+      });
+    }
+
     // ── WhatsApp Tab Switching ──
     const tabPersonal = this.element.querySelector('#tab-btn-wa-personal');
     const tabBusiness = this.element.querySelector('#tab-btn-wa-business');
@@ -485,12 +567,47 @@ export class SettingsModal {
         }
       });
     }
+
+    // ── Notification Permissions & Drawer ──
+    const reqNotifBtn = this.element.querySelector('#btn-request-notif-perm');
+    if (reqNotifBtn) {
+      reqNotifBtn.addEventListener('click', async () => {
+        if ('Notification' in window) {
+          const perm = await Notification.requestPermission();
+          this.refreshNotificationStatus();
+          if (perm === 'granted') {
+            new Notification('MITRA Companion', { body: 'Notifications are now enabled!' });
+          }
+        }
+      });
+    }
+
+    const openDrawerBtn = this.element.querySelector('#btn-open-notif-drawer-settings');
+    if (openDrawerBtn) {
+      openDrawerBtn.addEventListener('click', () => {
+        this.close();
+        if (window.__mitra_notif_drawer) {
+          window.__mitra_notif_drawer.open();
+        } else {
+          import('./NotificationDrawer.js?v=v26').then(({ NotificationDrawer }) => {
+            window.__mitra_notif_drawer = new NotificationDrawer(window.__mitra_event_bus);
+            document.body.appendChild(window.__mitra_notif_drawer.element);
+            window.__mitra_notif_drawer.open();
+          });
+        }
+      });
+    }
   }
 
   open() {
-    this.element.style.display = 'flex';
-    this.refreshGoogleStatus();
-    this.refreshWhatsAppStatus();
+    this.element.style.setProperty('display', 'flex', 'important');
+    this.element.style.setProperty('visibility', 'visible', 'important');
+    this.element.style.setProperty('opacity', '1', 'important');
+    this.element.style.setProperty('pointer-events', 'auto', 'important');
+    this.element.style.setProperty('z-index', '99999999', 'important');
+    try { this.refreshNotificationStatus(); } catch(e){}
+    try { this.refreshGoogleStatus(); } catch(e){}
+    try { this.refreshWhatsAppStatus(); } catch(e){}
   }
 
   close() {

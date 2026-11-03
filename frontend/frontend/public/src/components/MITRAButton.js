@@ -19,23 +19,34 @@ export class MITRAButton {
 
     let startX = 0;
     let startY = 0;
+    let isPointerDown = false;
     let hasDragged = false;
 
     this.element.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       startX = e.clientX;
       startY = e.clientY;
+      isPointerDown = true;
       hasDragged = false;
 
       const onPointerMove = (moveEvent) => {
-        if (Math.abs(moveEvent.clientX - startX) > 5 || Math.abs(moveEvent.clientY - startY) > 5) {
+        if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) > 12) {
           hasDragged = true;
         }
       };
 
-      const onPointerUp = () => {
+      const onPointerUp = (upEvt) => {
         window.removeEventListener('pointermove', onPointerMove);
         window.removeEventListener('pointerup', onPointerUp);
+        if (isPointerDown) {
+          isPointerDown = false;
+          const dist = Math.hypot(upEvt.clientX - startX, upEvt.clientY - startY);
+          if (dist < 12) {
+            hasDragged = false;
+            eventBus.emit('chat.opened', {});
+            if (onClickCallback) onClickCallback();
+          }
+        }
       };
 
       window.addEventListener('pointermove', onPointerMove);
@@ -43,13 +54,13 @@ export class MITRAButton {
     });
 
     this.element.addEventListener('click', (e) => {
-      if (hasDragged) {
-        e.preventDefault();
-        e.stopPropagation();
-        return;
+      e.preventDefault();
+      e.stopPropagation();
+      const dist = Math.hypot(e.clientX - startX, e.clientY - startY);
+      if (!hasDragged || dist < 12) {
+        eventBus.emit('chat.opened', {});
+        if (onClickCallback) onClickCallback();
       }
-      eventBus.emit('chat.opened', {});
-      if (onClickCallback) onClickCallback();
     });
 
     // Right-click to change companion avatar
@@ -99,11 +110,18 @@ export class MITRAButton {
   }
 
   hide() {
-    this.element.style.display = 'none';
+    this.element.style.setProperty('display', 'none', 'important');
+    this.element.style.setProperty('visibility', 'hidden', 'important');
+    this.element.style.setProperty('opacity', '0', 'important');
+    this.element.style.setProperty('pointer-events', 'none', 'important');
   }
 
   show() {
     if (this.hiddenPermanently) return;
-    this.element.style.display = 'flex';
+    this.element.style.setProperty('display', 'flex', 'important');
+    this.element.style.setProperty('visibility', 'visible', 'important');
+    this.element.style.setProperty('opacity', '1', 'important');
+    this.element.style.setProperty('pointer-events', 'auto', 'important');
+    this.element.style.setProperty('z-index', '9999999', 'important');
   }
 }

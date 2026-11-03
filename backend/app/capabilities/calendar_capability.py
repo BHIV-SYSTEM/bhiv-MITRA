@@ -304,7 +304,8 @@ class CalendarCapability(BaseCapability):
 
                 # Schedule advance reminder (e.g. 1 day prior)
                 now_utc = datetime.now(timezone.utc)
-                rem_dt = start_dt - timedelta(days=1)
+                safe_start = start_dt if start_dt.tzinfo is not None else start_dt.replace(tzinfo=timezone.utc)
+                rem_dt = safe_start - timedelta(days=1)
                 adv_msg = f"Upcoming Reminder: '{title}' is tomorrow at {start_dt.strftime('%I:%M %p')}." if rem_dt > now_utc else f"Upcoming Reminder: '{title}' starts soon at {start_dt.strftime('%I:%M %p')}."
                 adv_iso = rem_dt.isoformat() if rem_dt > now_utc else (now_utc + timedelta(minutes=15)).isoformat()
 

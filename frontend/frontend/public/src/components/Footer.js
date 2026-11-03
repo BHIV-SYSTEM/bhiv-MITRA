@@ -109,12 +109,12 @@ export class Footer {
       reader.readAsDataURL(file);
     });
 
-    const triggerSend = () => {
+    const triggerSend = (wasVoice = false) => {
       const text = input.value.trim();
       const imagePayload = this.attachedImageBase64;
 
       if (text || imagePayload) {
-        if (onSend) onSend(text, imagePayload);
+        if (onSend) onSend(text, imagePayload, wasVoice);
         input.value = '';
         input.focus();
         clearAttachedImage();
@@ -150,18 +150,19 @@ export class Footer {
     let isListening = false;
     let recognition = null;
 
-    if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
+    if (typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       recognition = new SpeechRecognition();
       recognition.continuous = false;
       recognition.interimResults = true;
-      recognition.lang = 'en-US';
+      recognition.lang = 'en-IN';
 
       recognition.onstart = () => {
         isListening = true;
-        btnMic.style.color = '#e056fd';
-        btnMic.style.background = 'rgba(224, 86, 253, 0.25)';
-        input.placeholder = '🎙️ Listening... Speak now...';
+        btnMic.style.color = '#00e676';
+        btnMic.style.background = 'rgba(0, 230, 118, 0.25)';
+        btnMic.style.boxShadow = '0 0 14px rgba(0, 230, 118, 0.7)';
+        input.placeholder = '🎙️ Listening... Speak your question now...';
       };
 
       recognition.onresult = (event) => {
@@ -169,16 +170,20 @@ export class Footer {
         for (let i = event.resultIndex; i < event.results.length; i++) {
           transcript += event.results[i][0].transcript;
         }
-        input.value = transcript;
+        if (transcript) {
+          input.value = transcript;
+        }
       };
 
       recognition.onerror = (err) => {
         isListening = false;
         btnMic.style.color = '';
         btnMic.style.background = '';
+        btnMic.style.boxShadow = '';
         input.placeholder = 'Message MITRA or attach an image...';
+        console.warn('[MITRA Mic] Speech recognition notice:', err?.error);
         if (err && err.error === 'not-allowed') {
-          alert('🎙️ Microphone access blocked. Please click the Lock icon in your browser address bar and enable Microphone.');
+          alert('Microphone access is blocked. Please click the Lock icon in your browser address bar and set Microphone to Allow.');
         }
       };
 
@@ -186,27 +191,40 @@ export class Footer {
         isListening = false;
         btnMic.style.color = '';
         btnMic.style.background = '';
+        btnMic.style.boxShadow = '';
         input.placeholder = 'Message MITRA or attach an image...';
         if (input.value.trim()) {
-          triggerSend();
+          triggerSend(true);
         }
       };
     }
 
-    btnMic.addEventListener('click', () => {
+    btnMic.addEventListener('click', (e) => {
+      e.preventDefault();
       unlockAudio();
-      if (recognition) {
-        if (isListening) {
-          recognition.stop();
-        } else {
-          try {
-            recognition.start();
-          } catch (err) {
-            recognition.stop();
-          }
-        }
+      if (!recognition) {
+        alert('Speech recognition requires Google Chrome or Microsoft Edge with microphone enabled.');
+        return;
+      }
+      if (isListening) {
+        try { recognition.stop(); } catch (err) {}
       } else {
-        alert('🎙️ Speech recognition is not supported in this browser. Please try Google Chrome or Edge.');
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          navigator.mediaDevices.getUserMedia({ audio: true })
+            .then((stream) => {
+              stream.getTracks().forEach(t => t.stop());
+              try { recognition.start(); } catch (err) {
+                recognition.stop();
+                setTimeout(() => { try { recognition.start(); } catch (e2) {} }, 150);
+              }
+            })
+            .catch((permErr) => {
+              console.warn('[MITRA Mic] Permission error:', permErr);
+              alert('Microphone permission required. Please click the Lock icon in your address bar to Allow Microphone.');
+            });
+        } else {
+          try { recognition.start(); } catch (err) {}
+        }
       }
     });
   }

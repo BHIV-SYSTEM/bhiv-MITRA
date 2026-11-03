@@ -257,22 +257,31 @@
   </div>
 
   <!-- MITRA Companion -->
-  <mitra-companion stylesheet-path="styles/mitra-companion.css?v=v34"
-    api-base-url="http://localhost:8001"></mitra-companion>
-  <script type="module" src="src/mitra-companion.js?v=v34"></script>
+  <mitra-companion stylesheet-path="styles/mitra-companion.css?v=v50"
+    api-base-url="https://mitra.blackholeinfiverse.com"></mitra-companion>
+  <script type="module" src="src/mitra-companion.js?v=v50"></script>
   <script>
     // Guarantee clean floating orb visibility on index.html
     try {
       const raw = localStorage.getItem('mitra_context_store');
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed.dockMode !== 'floating' || parsed.position) {
+        if (parsed.dockMode !== 'floating' || parsed.position || parsed.windowState === 'minimized') {
           parsed.dockMode = 'floating';
           parsed.position = null;
+          parsed.windowState = 'expanded';
           localStorage.setItem('mitra_context_store', JSON.stringify(parsed));
         }
       }
     } catch (e) { }
+
+    // Alert user if root folder is mistakenly served on port 8080 instead of Raj's React UI
+    if (window.location.port === '8080') {
+      const banner = document.createElement('div');
+      banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#e11d48;color:white;text-align:center;padding:14px;font-weight:bold;font-size:13px;z-index:9999999;box-shadow:0 4px 16px rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;gap:12px;';
+      banner.innerHTML = '<span>&#9888;&#65039; <strong>Port 8080 Notice:</strong> You ran <code>python -m http.server 8080</code> from the root folder, which serves this Landing Page instead of Raj's React UI. Please run <code>run_8080.bat</code> or <code>python serve_frontend_8080.py</code> to see Raj's MITRA UI.</span>';
+      document.body.prepend(banner);
+    }
   </script>
 </body>
 

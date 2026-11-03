@@ -1,6 +1,15 @@
+/**
+ * Global EventBus Singleton — ensures single instance across all modules and query params.
+ */
 export class EventBus {
   constructor() {
+    if (typeof window !== 'undefined' && window.__mitra_event_bus) {
+      return window.__mitra_event_bus;
+    }
     this.listeners = {};
+    if (typeof window !== 'undefined') {
+      window.__mitra_event_bus = this;
+    }
   }
 
   on(event, callback) {
@@ -18,7 +27,13 @@ export class EventBus {
   emit(event, data = {}) {
     this.logStructuredEvent(event, data);
     if (!this.listeners[event]) return;
-    this.listeners[event].forEach(callback => callback(data));
+    this.listeners[event].forEach(callback => {
+      try {
+        callback(data);
+      } catch (err) {
+        console.warn(`[MITRA EventBus] Error in listener for "${event}":`, err);
+      }
+    });
   }
 
   logStructuredEvent(event, data) {
@@ -80,4 +95,6 @@ export class EventBus {
   }
 }
 
-export const eventBus = new EventBus();
+export const eventBus = (typeof window !== 'undefined' && window.__mitra_event_bus) 
+  ? window.__mitra_event_bus 
+  : new EventBus();

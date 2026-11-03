@@ -12,6 +12,7 @@ export class CapabilityLauncher {
       { id: 'task', name: 'Tasks / To-Do', intent: 'task', icon: '<path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9 14l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>' },
       { id: 'email', name: 'Email', intent: 'email', icon: '<path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>' },
       { id: 'whatsapp', name: 'WhatsApp', intent: 'whatsapp', icon: '<path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.816 9.816 0 0012.04 2z"/>' },
+      { id: 'telegram', name: 'Telegram Bot', intent: 'telegram', icon: '<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .37z"/>' },
       { id: 'ocr', name: 'OCR', intent: 'extract_text', icon: '<path d="M3 5v4h2V7h4V5H3zm14 0v2h4v2h2V5h-6zM3 15v4h6v-2H5v-2H3zm18 0h-2v2h-4v2h6v-4zM7 11h10v2H7z"/>' },
       { id: 'translate', name: 'Translate', intent: 'translate_text', icon: '<path d="M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v1.99h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2.1l1.1-3h4.6l1.1 3H23l-4.5-12zm-2.62 7l1.62-4.41L19.12 17h-3.24z"/>' },
       { id: 'summarize', name: 'Summarize', intent: 'summarize_text', icon: '<path d="M14 17H4v-2h10v2zm6-8H4V7h16v2zM4 13h16v-2H4v2zm0 8h10v-2H4v2z"/>' },
@@ -32,8 +33,8 @@ export class CapabilityLauncher {
 
     this.element.innerHTML = `
       <div class="launcher-header">
-        Capabilities
-        <button class="mitra-btn" id="btn-close-launcher">
+        <span>Tools &amp; Capabilities</span>
+        <button class="mitra-btn" id="btn-close-launcher" title="Close Tools">
           <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
         </button>
       </div>
@@ -64,5 +65,13 @@ export class CapabilityLauncher {
 
   close() {
     this.element.classList.remove('active');
+  }
+
+  toggle() {
+    if (this.element.classList.contains('active')) {
+      this.close();
+    } else {
+      this.open();
+    }
   }
 }

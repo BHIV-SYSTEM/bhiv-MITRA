@@ -5,7 +5,13 @@ import { eventBus } from './eventBus.js';
  */
 export class ContextStore {
   constructor() {
+    if (typeof window !== 'undefined' && window.__mitra_context_store_instance) {
+      return window.__mitra_context_store_instance;
+    }
     this.storageKey = 'mitra_context_store';
+    if (typeof window !== 'undefined') {
+      window.__mitra_context_store_instance = this;
+    }
     this.state = this.loadState();
 
     eventBus.on('context.updated', (newState) => {
@@ -27,6 +33,7 @@ export class ContextStore {
           position: null,
           sessionId: null,
           userId: null,
+          userEmail: null,
           windowState: 'minimized',
           ...parsed
         };
@@ -42,6 +49,7 @@ export class ContextStore {
       position: null,
       sessionId: null,
       userId: null,
+      userEmail: null,
       windowState: 'minimized',
     };
   }
@@ -116,6 +124,36 @@ export class ContextStore {
       if (!payloadB64) return null;
       const payload = JSON.parse(atob(payloadB64));
       return payload.sub || payload.id || payload.user_id || null;
+    } catch {
+      return null;
+    }
+  }
+
+  // ── v5 User Email & Calendar Identity ──────────────────────────────────────
+
+  setUserEmail(email) {
+    this.state.userEmail = email ? email.trim() : null;
+    if (this.state.userEmail) {
+      try { localStorage.setItem('mitra_user_email', this.state.userEmail); } catch (e) {}
+    }
+    this.saveState();
+  }
+
+  getUserEmail() {
+    return this.state.userEmail
+      || (typeof localStorage !== 'undefined' ? (localStorage.getItem('mitra_user_email') || localStorage.getItem('user_email') || localStorage.getItem('email')) : null)
+      || this._parseUserEmailFromToken()
+      || 'ashwini@blackholeinfiverse.com';
+  }
+
+  _parseUserEmailFromToken() {
+    try {
+      const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+      if (!token) return null;
+      const payloadB64 = token.split('.')[1];
+      if (!payloadB64) return null;
+      const payload = JSON.parse(atob(payloadB64));
+      return payload.email || payload.user_email || null;
     } catch {
       return null;
     }
@@ -242,4 +280,4 @@ export class ContextStore {
   }
 }
 
-export const contextStore = new ContextStore();
+export const contextStore = (typeof window !== 'undefined' && window.__mitra_context_store_instance) ? window.__mitra_context_store_instance : new ContextStore();

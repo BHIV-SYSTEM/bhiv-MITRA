@@ -1,9 +1,10 @@
-import { Header } from './Header.js?v=v34';
-import { ConversationPanel } from './ConversationPanel.js?v=v34';
-import { Footer } from './Footer.js?v=v34';
-import { CapabilityLauncher } from './CapabilityLauncher.js?v=v34';
+import { Header } from './Header.js';
+import { ConversationPanel } from './ConversationPanel.js';
+import { Footer } from './Footer.js';
+import { CapabilityLauncher } from './CapabilityLauncher.js';
 import { HealthPanel } from './HealthPanel.js';
 import { ActivityIndicator } from './ActivityIndicator.js';
+import { SettingsModal } from './SettingsModal.js';
 import { renderAvatarElement, getActiveMitraAvatar } from '../services/avatarHelper.js';
 import { contextStore } from '../services/contextStore.js';
 
@@ -17,6 +18,9 @@ export class MITRAWindow {
     this.element.className = 'mitra-window';
     this.state = 'minimized'; // 'minimized', 'expanded'
 
+    this.settingsModal = null;
+    this.whatsAppModal = null;
+
     this.header = new Header(
       () => this.minimize(),
       () => {
@@ -29,6 +33,7 @@ export class MITRAWindow {
 
     this.unreadNotificationsCount = 0;
 
+    // Notification Drawer
     this.header.onNotificationClick = () => {
       this.unreadNotificationsCount = 0;
       this.header.setUnreadBadgeCount(0);
@@ -36,7 +41,7 @@ export class MITRAWindow {
       if (window.__mitra_notif_drawer) {
         window.__mitra_notif_drawer.toggle();
       } else {
-        import('./NotificationDrawer.js?v=v26').then(({ NotificationDrawer }) => {
+        import('./NotificationDrawer.js').then(({ NotificationDrawer }) => {
           window.__mitra_notif_drawer = new NotificationDrawer(this.eventBus);
           document.body.appendChild(window.__mitra_notif_drawer.element);
           window.__mitra_notif_drawer.open();
@@ -44,11 +49,38 @@ export class MITRAWindow {
       }
     };
 
+    // Header WhatsApp Button Click
+    this.header.onWhatsAppClick = () => {
+      this.openWhatsAppModal();
+    };
+
+    // Header Settings Button Click
+    this.header.onSettingsClick = () => {
+      this.openSettingsModal();
+    };
+
     // Increment unread notification badge on incoming real notifications
     this.eventBus.on('notification.received', () => {
       this.unreadNotificationsCount++;
       this.header.setUnreadBadgeCount(this.unreadNotificationsCount);
     });
+
+    // Remote event listeners
+    this.eventBus.on('whatsapp.open_modal', () => {
+      this.openWhatsAppModal();
+    });
+
+    this.eventBus.on('settings.open_modal', () => {
+      this.openSettingsModal();
+    });
+
+    if (typeof window !== 'undefined') {
+      window.__mitra_open_whatsapp = () => this.openWhatsAppModal();
+      window.__mitra_open_settings = () => this.openSettingsModal();
+      if (!window.__MITRA_WHATSAPP_WEB__) {
+        window.__MITRA_WHATSAPP_WEB__ = () => this.openWhatsAppModal();
+      }
+    }
 
     // Initial and dynamic avatar updates
     const initialAvatar = getActiveMitraAvatar(contextStore);
@@ -66,23 +98,23 @@ export class MITRAWindow {
       }
     });
 
-    // Listen for remote request to open settings
-    this.eventBus.on('settings.open_modal', () => {
-      if (!window.__mitra_settings_modal) {
-        import('./SettingsModal.js').then(({ SettingsModal }) => {
-          window.__mitra_settings_modal = new SettingsModal();
-          document.body.appendChild(window.__mitra_settings_modal.element);
-          window.__mitra_settings_modal.open();
-        });
-      } else {
-        window.__mitra_settings_modal.open();
+    // Listen for runtime thinking / idle to reflect in Header status
+    this.eventBus.on('runtime.thinking', () => {
+      if (this.header && this.header.setStatus) {
+        this.header.setStatus('Thinking', 'processing...');
+      }
+    });
+
+    this.eventBus.on('runtime.idle', () => {
+      if (this.header && this.header.setStatus) {
+        this.header.setStatus('Healthy', runtimeService.latency || 'ready');
       }
     });
 
     // Listen for click on suggested actions
     this.eventBus.on('chat.send_suggested', (text) => {
       if (this.runtimeService) {
-        this.runtimeService.sendMessage(text);
+        this.runtimeService.sendMessage(text, false);
       }
     });
 
@@ -102,25 +134,26 @@ export class MITRAWindow {
         }
 
         if (capability === 'settings') {
-          if (!window.__mitra_settings_modal) {
-            import('./SettingsModal.js').then(({ SettingsModal }) => {
-              window.__mitra_settings_modal = new SettingsModal();
-              document.body.appendChild(window.__mitra_settings_modal.element);
-              window.__mitra_settings_modal.open();
-            });
-          } else {
-            window.__mitra_settings_modal.open();
-          }
+          this.openSettingsModal();
+          return;
+        }
+
+        if (capability === 'whatsapp' || capability === 'telegram') {
+          this.openWhatsAppModal();
+          return;
+        }
+
+        if (capability === 'voice') {
+          const micBtn = this.footer.element.querySelector('#btn-mic');
+          if (micBtn) micBtn.click();
           return;
         }
 
         if (capability === 'summarize') {
-          // Read whatever text the user has typed in the input bar
           const inputEl = this.footer.element.querySelector('#chat-input');
           const inputText = inputEl ? inputEl.value.trim() : '';
 
           if (!inputText) {
-            // Show an in-chat prompt so the user knows what to do
             this.eventBus.emit('chat.mitra_message', {
               role: 'mitra',
               text: '📌 To summarize, type or paste your text in the message box below, then click **Summarize** again.\n\nFor example: "Artificial intelligence is transforming many industries..."',
@@ -129,30 +162,10 @@ export class MITRAWindow {
             return;
           }
 
-          // Show the user's text as their message and clear the input
           this.eventBus.emit('user.message_sent', { text: `📄 [Summarize] ${inputText.substring(0, 60)}${inputText.length > 60 ? '...' : ''}` });
           if (inputEl) inputEl.value = '';
 
           this.runtimeService.sendCapabilityRequest('summarize', 'summarize_text', { text: inputText });
-          return;
-        }
-        
-        if (capability === 'whatsapp') {
-          const inputEl = this.footer.element.querySelector('#chat-input');
-          const inputText = inputEl ? inputEl.value.trim() : '';
-          
-          if (!inputText) {
-            this.eventBus.emit('chat.mitra_message', {
-              role: 'mitra',
-              text: '📌 To send a WhatsApp message, type the number and message in the chat box, then click **WhatsApp** again.\n\nFor example: "+1234567890 Hello MITRA!"',
-              intent: 'whatsapp_prompt'
-            });
-            return;
-          }
-          
-          // Send it as a normal message so the new RuntimeService NLP can parse it
-          this.eventBus.emit('chat.send_suggested', `Send a WhatsApp to ${inputText}`);
-          if (inputEl) inputEl.value = '';
           return;
         }
 
@@ -167,14 +180,13 @@ export class MITRAWindow {
         const attachedImg = this.footer.getAttachedImage();
         const params = attachedImg ? { image_url: attachedImg } : {};
         this.runtimeService.sendCapabilityRequest(capability, intent, params);
-
       }
     );
 
     this.activityIndicator = new ActivityIndicator(eventBus);
 
     this.footer = new Footer(
-      (text, imagePayload) => {
+      (text, imagePayload, wasVoice) => {
         if (imagePayload) {
           const reqText = text || 'Analyze attached image';
           this.eventBus.emit('user.message_sent', { text: `📷 [Attached Image] ${reqText}` });
@@ -183,7 +195,7 @@ export class MITRAWindow {
           this.runtimeService.sendMessage(text);
         }
       },
-      () => this.launcher.open()
+      () => this.launcher.toggle()
     );
 
     // Assembly
@@ -212,6 +224,35 @@ export class MITRAWindow {
     }, { passive: true });
     
     this.onMinimize = null;
+  }
+
+  openSettingsModal() {
+    if (typeof window !== 'undefined' && typeof window.__MITRA_SETTINGS__ === 'function') {
+      try { window.__MITRA_SETTINGS__(); } catch (e) {}
+    }
+    if (!this.settingsModal) {
+      this.settingsModal = new SettingsModal();
+      document.body.appendChild(this.settingsModal.element);
+    }
+    this.settingsModal.open();
+  }
+
+  openWhatsAppModal() {
+    if (typeof window !== 'undefined' && typeof window.__MITRA_WHATSAPP_WEB__ === 'function') {
+      try {
+        window.__MITRA_WHATSAPP_WEB__();
+        return;
+      } catch (e) {}
+    }
+    import('./WhatsAppModal.js').then(({ WhatsAppModal }) => {
+      if (!this.whatsAppModal) {
+        this.whatsAppModal = new WhatsAppModal(this.eventBus);
+        document.body.appendChild(this.whatsAppModal.element);
+      }
+      this.whatsAppModal.open();
+    }).catch(e => {
+      console.warn('WhatsApp modal unavailable:', e);
+    });
   }
 
   expand() {

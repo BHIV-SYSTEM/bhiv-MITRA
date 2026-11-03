@@ -405,9 +405,16 @@ export function useIsMobile() {
 // ── Universal Chatbot Window Toggle Helper ──
 export function toggleMitraChatbotWindow(): boolean {
   try {
+    let companion = document.querySelector('mitra-companion') as HTMLElement;
+    if (!companion && typeof document !== 'undefined') {
+      companion = document.createElement('mitra-companion');
+      companion.setAttribute('stylesheet-path', '/styles/mitra-companion.css?v=v41');
+      companion.setAttribute('api-base-url', 'https://mitra.blackholeinfiverse.com');
+      document.body.appendChild(companion);
+    }
+
     if (typeof (window as any).__MITRA_TOGGLE_ORB__ === 'function') {
       (window as any).__MITRA_TOGGLE_ORB__();
-      const companion = document.querySelector('mitra-companion') as HTMLElement;
       const shadow = companion?.shadowRoot;
       const win = shadow?.querySelector('.mitra-window') as HTMLElement;
       const isOpen = win
@@ -417,14 +424,16 @@ export function toggleMitraChatbotWindow(): boolean {
       return isOpen;
     }
 
-    const companion = document.querySelector('mitra-companion') as HTMLElement;
+    window.dispatchEvent(new CustomEvent('mitra:toggle-orb'));
+
     const shadow = companion?.shadowRoot;
     const shell = shadow?.querySelector('#mitra-shell') as HTMLElement;
     const win = shadow?.querySelector('.mitra-window') as HTMLElement;
 
     if (!companion || !shadow || !win) {
-      console.warn('[MITRA] Companion web component or window not ready yet');
-      return false;
+      const nextOpen = !useCompanionStore.getState().chatbotOpen;
+      useCompanionStore.getState().setChatbotOpen(nextOpen);
+      return nextOpen;
     }
 
     const isCurrentlyOpen =
@@ -440,13 +449,31 @@ export function toggleMitraChatbotWindow(): boolean {
       win.style.setProperty('opacity', '0', 'important');
       win.style.setProperty('pointer-events', 'none', 'important');
 
+      const fab = shadow?.querySelector('.mitra-fab') as HTMLElement;
+      if (fab) {
+        fab.style.setProperty('display', 'flex', 'important');
+        fab.style.setProperty('visibility', 'visible', 'important');
+        fab.style.setProperty('opacity', '1', 'important');
+        fab.style.setProperty('pointer-events', 'auto', 'important');
+        fab.style.setProperty('z-index', '9999999', 'important');
+      }
+      if (shell) {
+        shell.style.setProperty('display', 'flex', 'important');
+        shell.style.setProperty('pointer-events', 'auto', 'important');
+        shell.style.setProperty('z-index', '9999999', 'important');
+      }
       if (companion) {
+        companion.style.setProperty('display', 'block', 'important');
         companion.style.setProperty('pointer-events', 'none', 'important');
       }
       useCompanionStore.getState().setChatbotOpen(false);
       window.dispatchEvent(new CustomEvent('mitra:orb-state-changed', { detail: { open: false } }));
       return false;
     } else {
+      const fab = shadow?.querySelector('.mitra-fab') as HTMLElement;
+      if (fab) {
+        fab.style.setProperty('display', 'none', 'important');
+      }
       if (companion) {
         companion.style.setProperty('display', 'block', 'important');
         companion.style.setProperty('position', 'fixed', 'important');

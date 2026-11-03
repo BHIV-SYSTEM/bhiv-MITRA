@@ -1,12 +1,13 @@
-import { runtimeService } from './services/RuntimeService.js?v=v34';
-import { eventBus } from './services/eventBus.js?v=v34';
-import { MITRAButton } from './components/MITRAButton.js?v=v34';
-import { MITRAWindow } from './components/MITRAWindow.js?v=v34';
-import { NotificationCenter } from './components/NotificationCenter.js?v=v34';
-import { DockController } from './components/DockController.js?v=v34';
-import { contextStore } from './services/contextStore.js?v=v34';
-import { AvatarModal } from './components/AvatarModal.js?v=v34';
-import { initActiveMitraAvatar } from './services/avatarHelper.js?v=v34';
+import { runtimeService } from './services/RuntimeService.js';
+import { eventBus } from './services/eventBus.js';
+import { MITRAButton } from './components/MITRAButton.js';
+import { MITRAWindow } from './components/MITRAWindow.js';
+import { NotificationCenter } from './components/NotificationCenter.js';
+import { DockController } from './components/DockController.js';
+import { contextStore } from './services/contextStore.js';
+import { AvatarModal } from './components/AvatarModal.js';
+import { initActiveMitraAvatar } from './services/avatarHelper.js';
+import { whatsAppClient } from './services/whatsappClient.js';
 
 class MitraCompanion extends HTMLElement {
   constructor() {
@@ -47,6 +48,11 @@ class MitraCompanion extends HTMLElement {
       // Connect runtime services in the background
       runtimeService.connectAll().catch((err) => {
         console.warn('[MITRA] Runtime connect warning:', err);
+      });
+
+      // Initialize WhatsApp Web Automation background connection for real-time notifications
+      whatsAppClient.connect().catch((err) => {
+        console.warn('[MITRA] WhatsApp client background connect warning:', err);
       });
     } catch (err) {
       console.warn('[MITRA Error Boundary] Caught companion lifecycle error:', err);
@@ -127,6 +133,13 @@ class MitraCompanion extends HTMLElement {
     // Main Window
     const mitraWindow = new MITRAWindow(runtimeService, eventBus, dockController);
 
+    // Listen to WhatsApp connection changes to update Header indicator
+    whatsAppClient.subscribe((waState) => {
+      if (mitraWindow && mitraWindow.header) {
+        mitraWindow.header.setWhatsAppConnected(Boolean(waState.isReady));
+      }
+    });
+
     // Avatar customization modal setup (instantiated BEFORE event wiring to avoid TDZ ReferenceError)
     const avatarModal = new AvatarModal(eventBus, contextStore);
     shell.appendChild(avatarModal.element);
@@ -145,23 +158,34 @@ class MitraCompanion extends HTMLElement {
       avatarModal.open();
     });
 
-    // FAB
-    const mitraButton = new MITRAButton(() => {
-      if (shell.style.left && shell.style.left !== 'auto') {
-        const parsedLeft = parseFloat(shell.style.left);
-        const parsedTop = parseFloat(shell.style.top);
-        if (!isNaN(parsedLeft) && (parsedLeft + 420 > window.innerWidth || parsedLeft < 0)) {
-          shell.style.left = `${Math.max(20, window.innerWidth - 440)}px`;
-        }
-        if (!isNaN(parsedTop) && (parsedTop + 680 > window.innerHeight || parsedTop < 60)) {
-          shell.style.top = `${Math.max(60, window.innerHeight - 700)}px`;
+    // FAB & Chatbot Window Logic
+    const openWindow = () => {
+      shell.style.setProperty('display', 'flex', 'important');
+      shell.style.setProperty('pointer-events', 'auto', 'important');
+      shell.style.setProperty('z-index', '9999999', 'important');
+      if (contextStore.getDockMode() === 'floating') {
+        if (!shell.style.left || shell.style.left === 'auto') {
+          setFloatingDefaultPosition();
+        } else {
+          const parsedLeft = parseFloat(shell.style.left);
+          const parsedTop = parseFloat(shell.style.top);
+          if (!isNaN(parsedLeft)) {
+            shell.style.left = `${Math.max(20, Math.min(parsedLeft, window.innerWidth - 440))}px`;
+          }
+          if (!isNaN(parsedTop)) {
+            shell.style.top = `${Math.max(20, Math.min(parsedTop, window.innerHeight - 680))}px`;
+          }
         }
       }
       mitraButton.hide();
       mitraWindow.expand();
-      this.style.setProperty('pointer-events', 'auto', 'important');
+      this.style.setProperty('pointer-events', 'none', 'important');
       if (contextStore.setWindowState) contextStore.setWindowState('expanded');
       window.dispatchEvent(new CustomEvent('mitra:orb-state-changed', { detail: { open: true } }));
+    };
+
+    const mitraButton = new MITRAButton(() => {
+      openWindow();
     });
 
     // Double-click orb to reset to canonical bottom-right corner
@@ -184,7 +208,13 @@ class MitraCompanion extends HTMLElement {
       avatarModal.close(false);
       if (contextStore.setWindowState) contextStore.setWindowState('minimized');
       if (!hideFab) {
-        setTimeout(() => mitraButton.show(), 100);
+        shell.style.setProperty('display', 'flex', 'important');
+        shell.style.setProperty('pointer-events', 'auto', 'important');
+        shell.style.setProperty('z-index', '9999999', 'important');
+        mitraButton.show();
+        if (contextStore.getDockMode() === 'floating' && (!shell.style.left || shell.style.left === 'auto')) {
+          setFloatingDefaultPosition();
+        }
       } else {
         mitraButton.hide();
       }
@@ -203,21 +233,7 @@ class MitraCompanion extends HTMLElement {
         avatarModal.close(false);
         mitraWindow.minimize();
       } else {
-        if (shell.style.left && shell.style.left !== 'auto') {
-          const parsedLeft = parseFloat(shell.style.left);
-          const parsedTop = parseFloat(shell.style.top);
-          if (!isNaN(parsedLeft) && (parsedLeft + 420 > window.innerWidth || parsedLeft < 0)) {
-            shell.style.left = `${Math.max(20, window.innerWidth - 440)}px`;
-          }
-          if (!isNaN(parsedTop) && (parsedTop + 680 > window.innerHeight || parsedTop < 60)) {
-            shell.style.top = `${Math.max(60, window.innerHeight - 700)}px`;
-          }
-        }
-        mitraButton.hide();
-        mitraWindow.expand();
-        this.style.setProperty('pointer-events', 'auto', 'important');
-        if (contextStore.setWindowState) contextStore.setWindowState('expanded');
-        window.dispatchEvent(new CustomEvent('mitra:orb-state-changed', { detail: { open: true } }));
+        openWindow();
       }
     };
 
@@ -227,23 +243,34 @@ class MitraCompanion extends HTMLElement {
     };
 
     window.__MITRA_TOGGLE_ORB__ = toggleWindow;
+    window.__MITRA_EXPAND__ = openWindow;
     window.__MITRA_MINIMIZE__ = doMinimize;
     eventBus.on('companion.toggle', toggleWindow);
     window.addEventListener('mitra:toggle-orb', toggleWindow);
     window.addEventListener('mitra:minimize-orb', doMinimize);
 
     // Window initial state:
-    // Always start cleanly minimized as the floating orb so the chatbot screen never intrudes on page load
+    this.style.setProperty('pointer-events', 'none', 'important');
+    const savedState = contextStore.getWindowState ? contextStore.getWindowState() : 'expanded';
     if (hideFab) {
       mitraWindow.minimize();
       mitraButton.hide();
       if (contextStore.setWindowState) contextStore.setWindowState('minimized');
       window.dispatchEvent(new CustomEvent('mitra:orb-state-changed', { detail: { open: false } }));
-    } else {
+    } else if (savedState === 'minimized') {
+      shell.style.setProperty('display', 'flex', 'important');
+      shell.style.setProperty('pointer-events', 'auto', 'important');
+      shell.style.setProperty('z-index', '9999999', 'important');
       mitraWindow.minimize();
       mitraButton.show();
-      if (contextStore.setWindowState) contextStore.setWindowState('minimized');
       window.dispatchEvent(new CustomEvent('mitra:orb-state-changed', { detail: { open: false } }));
+    } else {
+      shell.style.setProperty('display', 'flex', 'important');
+      shell.style.setProperty('pointer-events', 'auto', 'important');
+      shell.style.setProperty('z-index', '9999999', 'important');
+      mitraButton.hide();
+      mitraWindow.expand();
+      window.dispatchEvent(new CustomEvent('mitra:orb-state-changed', { detail: { open: true } }));
     }
 
     eventBus.on('runtime.thinking', () => mitraButton.setThinking(true));
