@@ -58,16 +58,28 @@ export class NotificationDrawer {
 
     this.element.querySelector('#btn-mark-all-read').addEventListener('click', () => this.markAllAsRead());
 
-    if (this.eventBus) {
-      this.eventBus.on('notification.received', (data) => {
-        this.addNotification({
-          id: 'local_' + Date.now(),
-          title: data.title || '⏰ Reminder Alert',
-          message: data.text || data.message || 'Notification received',
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          read: false
-        });
+    const handleIncomingNotif = (data) => {
+      this.addNotification({
+        id: 'local_' + Date.now(),
+        title: data.title || '📅 Calendar / Reminder Alert',
+        message: data.text || data.message || 'Notification received',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        read: false
       });
+      // Increment Chatbot header bell badge
+      const badge = document.querySelector('#notif-badge-count');
+      if (badge) {
+        const c = parseInt(badge.textContent || '0', 10) + 1;
+        badge.textContent = c > 9 ? '9+' : c;
+        badge.style.display = 'block';
+      }
+    };
+
+    if (this.eventBus) {
+      this.eventBus.on('notification.received', handleIncomingNotif);
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('mitra:notification', (e) => handleIncomingNotif(e.detail || {}));
     }
   }
 

@@ -89,6 +89,32 @@ const CalendarPage: React.FC<{ onChatNavigate: (msg: string) => void }> = ({ onC
         await fetchEvents();
       }
 
+      const eventTimeStr = newStartTime ? ` at ${newStartTime}` : '';
+      const notifObj = {
+        title: `📅 Calendar: ${newTitle.trim()}`,
+        text: `Event '${newTitle.trim()}' scheduled for ${newDate}${eventTimeStr}. Advance reminder set!`,
+        message: `Event '${newTitle.trim()}' scheduled for ${newDate}${eventTimeStr}. Advance reminder set!`,
+        type: 'calendar',
+        role: 'mitra'
+      };
+
+      // 1. Update Raj's UI TopBar Notification Bell & List
+      useCompanionStore.getState().addNotification({
+        type: 'info',
+        title: notifObj.title,
+        body: notifObj.text,
+        read: false
+      });
+
+      // 2. Update Floating Orb & Chatbot Window & Drawer
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('mitra:notification', { detail: notifObj }));
+        const bus = (window as any).__mitra_event_bus;
+        if (bus && typeof bus.emit === 'function') {
+          bus.emit('notification.received', notifObj);
+        }
+      }
+
       const syncStatusMsg = res?.sync_status || 'Saved only in Mitra';
       if (res?.synchronized) {
         showToast('success', 'Event Created', `"${newTitle.trim()}" — Event created and synced to Google Calendar.`);

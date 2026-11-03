@@ -280,6 +280,46 @@ class CalendarCapability(BaseCapability):
                 sync_status=sync_status
             )
 
+            # Emit real-time notification & schedule advance reminder
+            try:
+                from app.services.notification_service import storage as notif_storage
+                from app.services.event_bus import event_bus
+                from app.executors.reminder_executor import ReminderExecutor
+
+                start_dt_fmt = start_dt.strftime("%d %b %Y at %I:%M %p")
+                notif_storage.create_notification(
+                    user_id=user_id,
+                    title=f"📅 Calendar: {title}",
+                    body=f"Event scheduled for {start_dt_fmt}. Advance reminder active.",
+                    type="calendar",
+                    metadata={"event_id": event_id, "start": start_dt.isoformat()}
+                )
+                event_bus.emit("notification.received", {
+                    "title": f"📅 Calendar: {title}",
+                    "text": f"Event '{title}' set for {start_dt_fmt}",
+                    "message": f"Event '{title}' set for {start_dt_fmt}",
+                    "type": "calendar",
+                    "user_id": user_id
+                })
+
+                # Schedule advance reminder (e.g. 1 day prior)
+                now_utc = datetime.now(timezone.utc)
+                rem_dt = start_dt - timedelta(days=1)
+                adv_msg = f"Upcoming Reminder: '{title}' is tomorrow at {start_dt.strftime('%I:%M %p')}." if rem_dt > now_utc else f"Upcoming Reminder: '{title}' starts soon at {start_dt.strftime('%I:%M %p')}."
+                adv_iso = rem_dt.isoformat() if rem_dt > now_utc else (now_utc + timedelta(minutes=15)).isoformat()
+
+                rem_trace = f"rem_cal_{uuid4().hex[:8]}"
+                rem_gw_token = GatewayAuth.issue(trace_id=rem_trace, platform="reminder", action="create_reminder", decision="allow")
+                ReminderExecutor().create_reminder(
+                    message=adv_msg,
+                    remind_at=adv_iso,
+                    user_id=user_id,
+                    trace_id=rem_trace,
+                    gateway_auth=rem_gw_token
+                )
+            except Exception as ce_err:
+                logger.warning(f"Could not trigger calendar notification: {ce_err}")
+
             # Generate Native Device Calendar Sync URLs (Google, Outlook)
             import urllib.parse
             start_iso = start_dt.strftime("%Y%m%dT%H%M%SZ")

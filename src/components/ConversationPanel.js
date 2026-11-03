@@ -69,21 +69,43 @@ export class ConversationPanel {
         }
       });
       
-      // Also render real notifications (like reminders) as chat bubbles
+      // Also render real notifications (like calendar events & reminders) as chat bubbles
       eventBus.on('notification.received', (data) => {
-        if (data.role === 'mitra') {
-          this.addMitraMessage(data.text || data.message, new Date(), data.intent, data.suggestedActions || [], data.capabilityResult);
+        const msgText = data.text || data.message || data.title;
+        if (msgText) {
+          this.addMitraMessage(msgText, new Date(), data.intent || 'calendar', data.suggestedActions || [], data.capabilityResult);
         }
       });
+
+      if (typeof window !== 'undefined') {
+        window.addEventListener('mitra:notification', (e) => {
+          const d = e.detail || {};
+          const msg = d.text || d.message || d.title;
+          if (msg) {
+            this.addMitraMessage(msg, new Date(), 'calendar', [], null);
+          }
+        });
+      }
 
       // Real-time listener: when a user message is sent
       eventBus.on('user.message_sent', (data) => {
         this.addUserMessage(data.text, new Date());
       });
 
-      // Real-time listener: show/hide animated typing indicator while companion is thinking
-      eventBus.on('runtime.thinking', () => {
-        this.showTypingIndicator();
+      // Real-time listener: show/hide animated typing indicator while companion is thinking or executing
+      eventBus.on('runtime.thinking', (data) => {
+        const stage = data?.stage || 'Evaluating query across BHIV Control Plane & Ecosystem';
+        this.showTypingIndicator('Thinking & Processing...', stage);
+      });
+
+      eventBus.on('runtime.executing', (data) => {
+        const cap = data?.capability ? `${data.capability.toUpperCase()}` : 'CAPABILITY';
+        this.showTypingIndicator(`Executing ${cap}...`, 'TANTRA Runtime executing on canonical cluster');
+      });
+
+      eventBus.on('capability.started', (data) => {
+        const cap = data?.capability ? `${data.capability.toUpperCase()}` : 'CAPABILITY';
+        this.showTypingIndicator(`Executing ${cap}...`, 'TANTRA Runtime executing on canonical cluster');
       });
 
       eventBus.on('runtime.idle', () => {
@@ -193,11 +215,12 @@ export class ConversationPanel {
   }
 
   async fetchDynamicGreeting() {
-    const defaultGreeting = "Hello! I'm Mitra, your friendly assistant. How can I help you today?";
+    const defaultGreeting = "Hello! I'm MITRA, your canonical companion across the BHIV Ecosystem. How can I help you today?";
+    const defaultActions = ['📅 Plan My Day', '📋 Tasks & To-Dos', '📱 Connect WhatsApp / Telegram', '📰 Samachar News'];
     try {
       const userId = this.contextStore ? this.contextStore.getUserId() : null;
       if (!userId) {
-        this.addMitraMessage(defaultGreeting, new Date());
+        this.addMitraMessage(defaultGreeting, new Date(), 'greeting', defaultActions);
         return;
       }
       
@@ -208,18 +231,26 @@ export class ConversationPanel {
       const res = await fetch(`${getApiBaseUrl()}/api/companion/greeting/${encodeURIComponent(userId)}`, { headers });
       if (res.ok) {
         const data = await res.json();
-        this.addMitraMessage(data.greeting || data.message || defaultGreeting, new Date());
+        this.addMitraMessage(data.greeting || data.message || defaultGreeting, new Date(), 'greeting', defaultActions);
       } else {
-        this.addMitraMessage(defaultGreeting, new Date());
+        this.addMitraMessage(defaultGreeting, new Date(), 'greeting', defaultActions);
       }
     } catch (e) {
-      this.addMitraMessage(defaultGreeting, new Date());
+      this.addMitraMessage(defaultGreeting, new Date(), 'greeting', defaultActions);
     }
   }
 
-  showTypingIndicator() {
-    this.hideTypingIndicator();
-    const row = document.createElement('div');
+  showTypingIndicator(title = 'Thinking & Processing...', subtitle = 'Evaluating query across BHIV Control Plane & Ecosystem') {
+    let row = this.element.querySelector('#mitra-typing-indicator');
+    if (row) {
+      const titleEl = row.querySelector('.typing-indicator-title');
+      const subEl = row.querySelector('.typing-indicator-sub');
+      if (titleEl) titleEl.innerHTML = `<span class="pulsing-brain">🧠</span> ${title}`;
+      if (subEl) subEl.textContent = subtitle;
+      this.scrollToBottom(true);
+      return;
+    }
+    row = document.createElement('div');
     row.className = 'chat-msg-row mitra wa-typing-row';
     row.id = 'mitra-typing-indicator';
 
@@ -228,11 +259,19 @@ export class ConversationPanel {
 
     const bubble = document.createElement('div');
     bubble.className = 'chat-bubble mitra typing-bubble';
+    bubble.style.cssText = 'padding:10px 14px; background:linear-gradient(135deg, rgba(32, 35, 45, 0.95), rgba(24, 26, 34, 0.98)); border:1px solid rgba(108, 92, 231, 0.35); border-radius:4px 16px 16px 16px; display:inline-flex; align-items:center; gap:10px; box-shadow:0 0 12px rgba(108, 92, 231, 0.2);';
     bubble.innerHTML = `
       <div class="typing-dots">
         <span></span><span></span><span></span>
       </div>
-      <span style="font-size:11px; color:#8696a0; margin-left:8px;">typing...</span>
+      <div style="display:flex; flex-direction:column; gap:2px;">
+        <span class="typing-indicator-title" style="font-size:11.5px; font-weight:600; color:#00e676; display:flex; align-items:center; gap:5px;">
+          <span class="pulsing-brain">🧠</span> ${title}
+        </span>
+        <span class="typing-indicator-sub" style="font-size:9.5px; color:rgba(255,255,255,0.65);">
+          ${subtitle}
+        </span>
+      </div>
     `;
 
     row.appendChild(avatarMedia);
@@ -294,8 +333,12 @@ export class ConversationPanel {
     const bubble = document.createElement('div');
     bubble.className = 'chat-bubble mitra';
     
-    // Auto-speak voice alert ONLY when a reminder is due
-    if (intent === 'reminder_alert') {
+    // Auto-speak response if query was asked via Voice or if auto-voice is enabled
+    const wasVoice = Boolean(window.__mitra_last_query_was_voice);
+    if (wasVoice) {
+      window.__mitra_last_query_was_voice = false;
+      controlPlane.speakText(text);
+    } else if (intent === 'reminder_alert') {
       controlPlane.speakText(text);
     }
 
@@ -388,12 +431,24 @@ export class ConversationPanel {
 
     let widgetContent = '';
 
-    if (capability === 'calendar') {
+        if (capability === 'calendar') {
       const nowD = new Date();
       const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
       const currentMonth = monthNames[nowD.getMonth()];
       const currentYear = nowD.getFullYear();
       const todayDate = nowD.getDate();
+
+      // Collect days that have events
+      const allEventsList = (backendData.events && Array.isArray(backendData.events)) ? backendData.events : (backendData.event ? [backendData.event] : []);
+      const eventDays = new Set();
+      allEventsList.forEach(e => {
+        if (e.start) {
+          const ed = new Date(e.start);
+          if (ed.getFullYear() === currentYear && ed.getMonth() === nowD.getMonth()) {
+            eventDays.add(ed.getDate());
+          }
+        }
+      });
 
       // Build 7-column Calendar Month Grid
       const daysInMonth = new Date(currentYear, nowD.getMonth() + 1, 0).getDate();
@@ -405,28 +460,50 @@ export class ConversationPanel {
       }
       for (let d = 1; d <= daysInMonth; d++) {
         const isToday = d === todayDate;
+        const hasEvent = eventDays.has(d);
         gridCells += `
           <div style="
-            padding:6px 2px; text-align:center; font-size:11px; font-weight:${isToday ? '700' : '400'};
-            background:${isToday ? '#6C5CE7' : 'rgba(255,255,255,0.03)'};
-            color:${isToday ? '#fff' : '#e4e4e7'}; border-radius:6px;
-            border:${isToday ? '1px solid #a29bfe' : '1px solid rgba(255,255,255,0.05)'};
-          ">${d}</div>
+            padding:5px 2px; text-align:center; font-size:11px; font-weight:${isToday ? '700' : '500'};
+            background:${isToday ? '#6C5CE7' : hasEvent ? 'rgba(108, 92, 231, 0.22)' : 'rgba(255,255,255,0.03)'};
+            color:${isToday ? '#fff' : hasEvent ? '#c4b5fd' : '#e4e4e7'}; border-radius:6px;
+            border:${isToday ? '1px solid #a29bfe' : hasEvent ? '1px solid rgba(162, 155, 254, 0.5)' : '1px solid rgba(255,255,255,0.05)'};
+            display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:28px;
+          ">
+            <span>${d}</span>
+            ${hasEvent ? '<span style="font-size:6px; color:#00e676; line-height:1; margin-top:1px;">●</span>' : ''}
+          </div>
         `;
       }
 
       if (backendData.events && Array.isArray(backendData.events)) {
-        const eventsHtml = backendData.events.map(e => `
-          <div style="background:rgba(255,255,255,0.05); padding:8px; border-radius:6px; margin-bottom:6px; font-size:12px;">
-            <div style="font-weight:600; color:#fff; font-size:12px; margin-bottom:2px;">📌 ${this.escapeHtml(e.title || 'Event')}</div>
-            <div style="color:rgba(255,255,255,0.6); font-size:10px;">⏰ ${e.start ? new Date(e.start).toLocaleString() : ''} ${e.end ? '→ ' + new Date(e.end).toLocaleString() : ''}</div>
-          </div>
-        `).join('');
+        const eventsHtml = backendData.events.map(e => {
+          const evTitle = e.title || 'Event';
+          const evStart = e.start ? new Date(e.start).toLocaleString() : '';
+          const evEnd = e.end ? ` → ${new Date(e.end).toLocaleString()}` : '';
+          const evLoc = e.location ? `<div style="color:rgba(255,255,255,0.5); font-size:10px; margin-top:2px;">📍 ${this.escapeHtml(e.location)}</div>` : '';
+          
+          const gUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(evTitle)}&details=${encodeURIComponent(e.description || '')}&location=${encodeURIComponent(e.location || '')}`;
+          const oUrl = `https://outlook.live.com/calendar/0/deeplink/compose?path=/calendar/action/compose&rru=addevent&subject=${encodeURIComponent(evTitle)}&body=${encodeURIComponent(e.description || '')}&location=${encodeURIComponent(e.location || '')}`;
+
+          return `
+            <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; margin-bottom:8px; font-size:12px; border:1px solid rgba(255,255,255,0.06);">
+              <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:6px;">
+                <div style="font-weight:600; color:#fff; font-size:12px;">📌 ${this.escapeHtml(evTitle)}</div>
+                <div style="display:flex; gap:4px; flex-shrink:0;">
+                  <a href="${gUrl}" target="_blank" rel="noopener noreferrer" title="Sync to Google Calendar" style="color:#4285F4; text-decoration:none; font-size:10px; background:rgba(66,133,244,0.15); padding:2px 6px; border-radius:4px; font-weight:600;">Google</a>
+                  <a href="${oUrl}" target="_blank" rel="noopener noreferrer" title="Sync to Microsoft Outlook" style="color:#0078D4; text-decoration:none; font-size:10px; background:rgba(0,120,212,0.15); padding:2px 6px; border-radius:4px; font-weight:600;">Outlook</a>
+                </div>
+              </div>
+              <div style="color:rgba(255,255,255,0.6); font-size:10px; margin-top:3px;">⏰ ${this.escapeHtml(evStart)}${this.escapeHtml(evEnd)}</div>
+              ${evLoc}
+            </div>
+          `;
+        }).join('');
 
         widgetContent = `
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:6px;">
-            <div style="font-weight:700; font-size:13px; color:#6c5ce7; display:flex; align-items:center; gap:6px;">📅 CALENDAR EVENTS</div>
-            <span style="font-size:10px; background:rgba(0,230,118,0.2); color:#00e676; padding:2px 6px; border-radius:4px;">Live DB Sync</span>
+            <div style="font-weight:700; font-size:13px; color:#a29bfe; display:flex; align-items:center; gap:6px;">📅 CALENDAR (${currentMonth} ${currentYear})</div>
+            <span style="font-size:10px; background:rgba(0,230,118,0.2); color:#00e676; padding:2px 6px; border-radius:4px; font-weight:600;">● Live DB Sync</span>
           </div>
           <!-- 7-Column Day Header (Sun-Sat) -->
           <div style="display:grid; grid-template-columns:repeat(7, 1fr); gap:4px; margin-bottom:6px; text-align:center; font-size:10px; font-weight:700; color:#a1a1aa;">
@@ -436,37 +513,80 @@ export class ConversationPanel {
           <div style="display:grid; grid-template-columns:repeat(7, 1fr); gap:4px; margin-bottom:10px;">
             ${gridCells}
           </div>
-          <div style="max-height:200px; overflow-y:auto; padding-right:4px;">
-            ${eventsHtml || '<div style="color:rgba(255,255,255,0.5); font-size:12px; text-align:center; padding:10px;">No upcoming events.</div>'}
+          <div style="font-size:11px; font-weight:700; color:#cbd5e1; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;">Upcoming Events (${backendData.events.length})</div>
+          <div style="max-height:220px; overflow-y:auto; padding-right:4px;">
+            ${eventsHtml || '<div style="color:rgba(255,255,255,0.5); font-size:12px; text-align:center; padding:12px; background:rgba(255,255,255,0.02); border-radius:8px;">No scheduled events. Click below to add one!</div>'}
+          </div>
+          <div style="margin-top:10px; display:flex; gap:8px;">
+            <button class="mitra-cal-quick-add" style="flex:1; background:linear-gradient(135deg, #6C5CE7, #8e44ad); color:#fff; border:none; padding:7px 10px; border-radius:8px; font-size:11px; font-weight:600; cursor:pointer;">➕ Schedule Event</button>
+            <button class="mitra-cal-open-full" style="flex:1; background:rgba(255,255,255,0.08); color:#e4e4e7; border:1px solid rgba(255,255,255,0.15); padding:7px 10px; border-radius:8px; font-size:11px; font-weight:600; cursor:pointer;">📅 Full Calendar</button>
           </div>
         `;
       } else {
-        // Real event data from backend
+        // Real event data from backend (Created event)
         const event = backendData.event || {};
         const eventTitle = event.title || resultText.replace(/^Calendar event created:\s*/i, '').replace(/^"|"$/g, '');
-        const eventStart = event.start ? new Date(event.start).toLocaleString() : 'Today';
-        const eventEnd = event.end ? ` → ${new Date(event.end).toLocaleString()}` : '';
+        const eventStart = event.start ? new Date(event.start).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Today';
+        const eventEnd = event.end ? ` → ${new Date(event.end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : '';
+        const eventLoc = event.location ? `<div style="color:rgba(255,255,255,0.6); font-size:11px; margin-top:3px;">📍 ${this.escapeHtml(event.location)}</div>` : '';
         const eventId = event.id ? `<div style="margin-top:4px; font-size:9px; color:rgba(255,255,255,0.3);">ID: ${this.escapeHtml(event.id)}</div>` : '';
 
         const syncUrls = backendData.sync_urls || {};
         const googleUrl = syncUrls.google || `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(eventTitle)}`;
         const outlookUrl = syncUrls.microsoft || `https://outlook.live.com/calendar/0/deeplink/compose?path=/calendar/action/compose&rru=addevent&subject=${encodeURIComponent(eventTitle)}`;
-        const appleUrl = syncUrls.apple || `http://localhost:8001/api/calendar/feed.ics`;
-        const zohoUrl = syncUrls.zoho || `https://calendar.zoho.com/calendar/export/event?title=${encodeURIComponent(eventTitle)}`;
+        const appleUrl = syncUrls.apple || `data:text/calendar;charset=utf8,BEGIN:VCALENDAR%0AVERSION:2.0%0ABEGIN:VEVENT%0ASUMMARY:${encodeURIComponent(eventTitle)}%0AEND:VEVENT%0AEND:VCALENDAR`;
+        
+        const advanceAlert = backendData.advance_alert || {};
+        const advanceFormatted = advanceAlert.formatted || '1 day prior to event';
+        const userEmail = backendData.user_email || (typeof contextStore !== 'undefined' ? contextStore.getUserEmail() : 'user@blackholeinfiverse.com');
 
-        const providerButtonsHtml = `
-          <div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:6px;">
-            <a href="${googleUrl}" target="_blank" rel="noopener noreferrer" style="background:#4285F4; color:#fff; padding:5px 10px; border-radius:6px; font-size:10px; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">🟢 Sync to Google</a>
-            <a href="${outlookUrl}" target="_blank" rel="noopener noreferrer" style="background:#0078D4; color:#fff; padding:5px 10px; border-radius:6px; font-size:10px; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">🟦 Microsoft Outlook</a>
-            <a href="${appleUrl}" target="_blank" rel="noopener noreferrer" style="background:#A2AAAD; color:#000; padding:5px 10px; border-radius:6px; font-size:10px; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">🍎 Apple iCal</a>
-            <a href="${zohoUrl}" target="_blank" rel="noopener noreferrer" style="background:#C00; color:#fff; padding:5px 10px; border-radius:6px; font-size:10px; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">🟡 Zoho Calendar</a>
+        const advanceAlertHtml = `
+          <div style="background:linear-gradient(135deg, rgba(108, 92, 231, 0.18), rgba(142, 68, 173, 0.12)); border:1px solid rgba(162, 155, 254, 0.4); border-radius:10px; padding:10px 12px; margin-top:10px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+              <div style="font-weight:700; color:#a29bfe; font-size:12px; display:flex; align-items:center; gap:6px;">
+                🔔 1-Day Advance Notification
+              </div>
+              <span style="font-size:9px; background:rgba(0, 230, 118, 0.2); color:#00e676; padding:2px 6px; border-radius:4px; font-weight:700;">SCHEDULED</span>
+            </div>
+            <div style="color:#f4f4f5; font-size:11px; line-height:1.4;">
+              MITRA & your phone calendar will alert you on <b style="color:#c4b5fd;">${this.escapeHtml(advanceFormatted)}</b> (24h in advance) so you're prepared!
+            </div>
+          </div>
+        `;
+
+        const phoneSyncHtml = `
+          <div style="background:rgba(255, 255, 255, 0.04); border:1px solid rgba(255, 255, 255, 0.08); border-radius:10px; padding:10px 12px; margin-top:10px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+              <div style="font-weight:700; color:#00e676; font-size:12px; display:flex; align-items:center; gap:6px;">
+                📱 Phone & Email Calendar Sync
+              </div>
+              <span style="font-size:9px; color:rgba(255,255,255,0.5);">Auto-Sync</span>
+            </div>
+            <div style="color:rgba(255,255,255,0.7); font-size:11px; margin-bottom:8px;">
+              Synced to your mobile phone's native calendar app under account:
+            </div>
+            <div style="display:flex; gap:6px; margin-bottom:10px;">
+              <input type="email" class="mitra-cal-email-field" value="${this.escapeHtml(userEmail)}" placeholder="your.email@gmail.com" style="flex:1; background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.2); border-radius:6px; padding:6px 8px; color:#fff; font-size:11px; outline:none;">
+              <button class="mitra-cal-save-email-btn" style="background:#6C5CE7; color:#fff; border:none; border-radius:6px; padding:6px 12px; font-size:11px; font-weight:600; cursor:pointer;">Set Email</button>
+            </div>
+            <div style="display:flex; flex-wrap:wrap; gap:6px;">
+              <a href="${googleUrl}" target="_blank" rel="noopener noreferrer" class="mitra-gcal-link" style="background:#4285F4; color:#fff; padding:6px 10px; border-radius:6px; font-size:11px; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+                🟢 Google Calendar (Phone)
+              </a>
+              <a href="${appleUrl}" download="${encodeURIComponent(eventTitle)}.ics" class="mitra-ics-link" style="background:#22c55e; color:#fff; padding:6px 10px; border-radius:6px; font-size:11px; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+                📲 Add to Phone Calendar (.ics)
+              </a>
+              <a href="${outlookUrl}" target="_blank" rel="noopener noreferrer" style="background:#0078D4; color:#fff; padding:6px 10px; border-radius:6px; font-size:11px; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+                🟦 Microsoft Outlook
+              </a>
+            </div>
           </div>
         `;
 
         widgetContent = `
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:6px;">
-            <div style="font-weight:700; font-size:13px; color:#6c5ce7; display:flex; align-items:center; gap:6px;">📅 CALENDAR (${currentMonth} ${currentYear})</div>
-            <span style="font-size:10px; background:rgba(0,230,118,0.2); color:#00e676; padding:2px 6px; border-radius:4px;">Live DB Sync</span>
+            <div style="font-weight:700; font-size:13px; color:#a29bfe; display:flex; align-items:center; gap:6px;">📅 EVENT CREATED (${currentMonth} ${currentYear})</div>
+            <span style="font-size:10px; background:rgba(0,230,118,0.2); color:#00e676; padding:2px 6px; border-radius:4px; font-weight:600;">● Saved to Mitra</span>
           </div>
 
           <!-- 7-Column Day Header (Sun-Sat) -->
@@ -479,11 +599,16 @@ export class ConversationPanel {
             ${gridCells}
           </div>
 
-          <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; font-size:12px;">
-            <div style="font-weight:600; color:#fff; font-size:13px; margin-bottom:4px;">📌 ${this.escapeHtml(eventTitle)}</div>
-            <div style="color:rgba(255,255,255,0.6); font-size:11px;">⏰ ${this.escapeHtml(eventStart)}${this.escapeHtml(eventEnd)}</div>
+          <div style="background:rgba(255,255,255,0.05); padding:12px; border-radius:8px; font-size:12px; border:1px solid rgba(108, 92, 231, 0.3);">
+            <div style="font-weight:700; color:#fff; font-size:13px; margin-bottom:4px;">📌 ${this.escapeHtml(eventTitle)}</div>
+            <div style="color:rgba(255,255,255,0.7); font-size:11px;">⏰ ${this.escapeHtml(eventStart)}${this.escapeHtml(eventEnd)}</div>
+            ${eventLoc}
             ${eventId}
-            ${providerButtonsHtml}
+            ${advanceAlertHtml}
+            ${phoneSyncHtml}
+          </div>
+          <div style="margin-top:10px; display:flex; gap:8px;">
+            <button class="mitra-cal-open-full" style="width:100%; background:rgba(255,255,255,0.08); color:#e4e4e7; border:1px solid rgba(255,255,255,0.15); padding:7px 10px; border-radius:8px; font-size:11px; font-weight:600; cursor:pointer;">📅 Open Full Calendar Page</button>
           </div>
         `;
       }
@@ -1498,6 +1623,56 @@ export class ConversationPanel {
         }
       });
     }
+
+        // Calendar action button listeners
+    card.querySelectorAll('.mitra-cal-quick-add').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const root = document.querySelector('mitra-companion')?.shadowRoot || document;
+        const input = root.querySelector('#chat-input') || document.querySelector('#chat-input');
+        if (input) {
+          input.value = 'Schedule meeting Team Sync tomorrow at 4pm';
+          input.focus();
+        }
+      });
+    });
+    card.querySelectorAll('.mitra-cal-open-full').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (typeof window !== 'undefined' && window.__MITRA_NAV__) {
+          window.__MITRA_NAV__('calendar');
+        }
+      });
+    });
+
+    card.querySelectorAll('.mitra-cal-save-email-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const parentCard = btn.closest('.capability-widget') || card;
+        const emailInput = parentCard.querySelector('.mitra-cal-email-field');
+        if (emailInput && emailInput.value.trim()) {
+          const newEmail = emailInput.value.trim();
+          if (typeof contextStore !== 'undefined' && contextStore.setUserEmail) {
+            contextStore.setUserEmail(newEmail);
+          }
+          try { localStorage.setItem('mitra_user_email', newEmail); } catch(e) {}
+          
+          btn.textContent = '✓ Saved!';
+          btn.style.background = '#22c55e';
+          setTimeout(() => {
+            btn.textContent = 'Set Email';
+            btn.style.background = '#6C5CE7';
+          }, 2000);
+
+          // Update Google Calendar deep link with new email attendee
+          const gLink = parentCard.querySelector('.mitra-gcal-link');
+          if (gLink) {
+            try {
+              const url = new URL(gLink.href);
+              url.searchParams.set('add', newEmail);
+              gLink.href = url.toString();
+            } catch(e) {}
+          }
+        }
+      });
+    });
 
     this.element.appendChild(card);
     this.scrollToBottom();

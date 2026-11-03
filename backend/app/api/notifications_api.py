@@ -136,6 +136,23 @@ async def get_unread_count(
     return {"user_id": current_user["user_id"], "unread_count": sum(1 for n in notifs if not n.read)}
 
 
+@router.get("/{user_id}")
+async def get_notifications_by_user(
+    user_id: str,
+    unread_only: bool = False,
+    limit: int = 50,
+):
+    """Fetch notifications by user_id for frontend and floating companion drawer."""
+    notifs, total = storage.get_notifications(user_id, unread_only, limit)
+    unread_list = storage.get_notifications(user_id, unread_only=True, limit=1000)[0]
+    return {
+        "user_id": user_id,
+        "notifications": [n.dict() for n in notifs],
+        "total": total,
+        "unread_count": sum(1 for n in unread_list if not n.read),
+    }
+
+
 @router.get("/")
 async def get_notifications(
     user_id: str = None,
