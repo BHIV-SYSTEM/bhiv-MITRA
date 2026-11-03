@@ -82,11 +82,11 @@ class MitraCompanion extends HTMLElement {
 
     const setFloatingDefaultPosition = () => {
       shell.style.removeProperty('inset');
-      shell.style.bottom = '24px';
-      shell.style.right = '24px';
-      shell.style.top = 'auto';
-      shell.style.left = 'auto';
-      shell.style.position = 'fixed';
+      shell.style.setProperty('bottom', '24px', 'important');
+      shell.style.setProperty('right', '24px', 'important');
+      shell.style.setProperty('top', 'auto', 'important');
+      shell.style.setProperty('left', 'auto', 'important');
+      shell.style.setProperty('position', 'fixed', 'important');
     };
 
     // By default in floating mode, always anchor cleanly to bottom-right corner (bottom: 24px; right: 24px)
@@ -136,12 +136,21 @@ class MitraCompanion extends HTMLElement {
     // Main Window
     const mitraWindow = new MITRAWindow(runtimeService, eventBus, dockController);
 
-    // Listen to WhatsApp connection changes to update Header indicator
-    whatsAppClient.subscribe((waState) => {
-      if (mitraWindow && mitraWindow.header) {
-        mitraWindow.header.setWhatsAppConnected(Boolean(waState.isReady));
-      }
-    });
+    // Listen to WhatsApp connection changes if client is available (safe dynamic import)
+    try {
+      import('./services/whatsappClient.js')
+        .then((mod) => {
+          const client = mod?.whatsAppClient || mod?.default;
+          if (client && typeof client.subscribe === 'function') {
+            client.subscribe((waState) => {
+              if (mitraWindow && mitraWindow.header) {
+                mitraWindow.header.setWhatsAppConnected(Boolean(waState?.isReady));
+              }
+            });
+          }
+        })
+        .catch(() => {});
+    } catch (_) {}
 
     // Avatar customization modal setup (instantiated BEFORE event wiring to avoid TDZ ReferenceError)
     const avatarModal = new AvatarModal(eventBus, contextStore);

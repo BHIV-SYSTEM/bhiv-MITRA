@@ -264,6 +264,10 @@ export class MITRAWindow {
     this.element.style.setProperty('opacity', '1', 'important');
     this.element.style.setProperty('pointer-events', 'auto', 'important');
     this.element.style.setProperty('transform', 'translateY(0) scale(1)', 'important');
+    this.element.style.setProperty('width', '400px', 'important');
+    this.element.style.setProperty('height', '650px', 'important');
+    this.element.style.setProperty('max-height', 'calc(100vh - 120px)', 'important');
+    this.element.style.setProperty('z-index', '9999999', 'important');
     if (this.conversation && typeof this.conversation.scrollToBottom === 'function') {
       setTimeout(() => this.conversation.scrollToBottom(false), 50);
     }

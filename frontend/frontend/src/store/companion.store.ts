@@ -408,7 +408,7 @@ export function toggleMitraChatbotWindow(): boolean {
     let companion = document.querySelector('mitra-companion') as HTMLElement;
     if (!companion && typeof document !== 'undefined') {
       companion = document.createElement('mitra-companion');
-      companion.setAttribute('stylesheet-path', '/styles/mitra-companion.css?v=v51');
+      companion.setAttribute('stylesheet-path', '/styles/mitra-companion.css?v=v52');
       companion.setAttribute('api-base-url', 'https://mitra.blackholeinfiverse.com');
       document.body.appendChild(companion);
     }
@@ -416,10 +416,31 @@ export function toggleMitraChatbotWindow(): boolean {
     if (typeof (window as any).__MITRA_TOGGLE_ORB__ === 'function') {
       (window as any).__MITRA_TOGGLE_ORB__();
       const shadow = companion?.shadowRoot;
+      const shell = shadow?.querySelector('#mitra-shell') as HTMLElement;
       const win = shadow?.querySelector('.mitra-window') as HTMLElement;
       const isOpen = win
         ? (win.classList.contains('expanded') || win.style.display === 'flex')
         : !useCompanionStore.getState().chatbotOpen;
+
+      if (win && isOpen) {
+        win.classList.remove('minimized');
+        win.classList.add('expanded', 'active', 'open');
+        win.style.setProperty('display', 'flex', 'important');
+        win.style.setProperty('visibility', 'visible', 'important');
+        win.style.setProperty('opacity', '1', 'important');
+        win.style.setProperty('pointer-events', 'auto', 'important');
+        win.style.setProperty('width', '400px', 'important');
+        win.style.setProperty('height', '650px', 'important');
+        win.style.setProperty('max-height', 'calc(100vh - 120px)', 'important');
+        if (shell) {
+          shell.style.setProperty('display', 'flex', 'important');
+          shell.style.setProperty('position', 'fixed', 'important');
+          shell.style.setProperty('bottom', '24px', 'important');
+          shell.style.setProperty('right', '24px', 'important');
+          shell.style.setProperty('z-index', '9999999', 'important');
+          shell.style.setProperty('pointer-events', 'auto', 'important');
+        }
+      }
       useCompanionStore.getState().setChatbotOpen(isOpen);
       return isOpen;
     }
