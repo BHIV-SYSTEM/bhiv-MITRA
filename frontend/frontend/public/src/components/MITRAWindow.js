@@ -87,7 +87,7 @@ export class MITRAWindow {
     this.header.updateAvatar(initialAvatar, renderAvatarElement);
 
     this.eventBus.on('avatar.changed', (data) => {
-      const activeAvatar = getActiveMitraAvatar(contextStore);
+      const activeAvatar = (data && data.avatar) ? data.avatar : getActiveMitraAvatar(contextStore);
       this.header.updateAvatar(activeAvatar, renderAvatarElement);
     });
 

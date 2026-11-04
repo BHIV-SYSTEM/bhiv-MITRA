@@ -6,7 +6,7 @@ import { NotificationCenter } from './components/NotificationCenter.js';
 import { DockController } from './components/DockController.js';
 import { contextStore } from './services/contextStore.js';
 import { AvatarModal } from './components/AvatarModal.js';
-import { initActiveMitraAvatar } from './services/avatarHelper.js';
+import { initActiveMitraAvatar, setCachedActiveAvatar } from './services/avatarHelper.js';
 
 class MitraCompanion extends HTMLElement {
   constructor() {
@@ -43,6 +43,22 @@ class MitraCompanion extends HTMLElement {
       }).catch((err) => {
         console.warn('[MITRA] Avatar init warning:', err);
       });
+
+      // Listen to host application avatar changes
+      const onHostAvatarChanged = (e) => {
+        const newAvatar = e.detail?.avatar || e.detail?.companionAvatar;
+        if (newAvatar) {
+          if (typeof setCachedActiveAvatar === 'function') {
+            setCachedActiveAvatar(newAvatar);
+          }
+          if (contextStore && typeof contextStore.setAvatar === 'function') {
+            try { contextStore.setAvatar(newAvatar); } catch (_) {}
+          }
+          eventBus.emit('avatar.changed', { avatar: newAvatar });
+        }
+      };
+      window.addEventListener('mitra:avatar-changed', onHostAvatarChanged);
+      window.addEventListener('mitra:companion-changed', onHostAvatarChanged);
 
       // Connect runtime services in the background
       runtimeService.connectAll().catch((err) => {

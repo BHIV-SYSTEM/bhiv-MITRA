@@ -424,7 +424,8 @@ export function toggleMitraChatbotWindow(): boolean {
 
       if (win && isOpen) {
         win.classList.remove('minimized');
-        win.classList.add('expanded', 'active', 'open');
+        win.classList.remove('minimized');
+      win.classList.add('expanded', 'active', 'open');
         win.style.setProperty('display', 'flex', 'important');
         win.style.setProperty('visibility', 'visible', 'important');
         win.style.setProperty('opacity', '1', 'important');
@@ -445,8 +446,6 @@ export function toggleMitraChatbotWindow(): boolean {
       return isOpen;
     }
 
-    window.dispatchEvent(new CustomEvent('mitra:toggle-orb'));
-
     const shadow = companion?.shadowRoot;
     const shell = shadow?.querySelector('#mitra-shell') as HTMLElement;
     const win = shadow?.querySelector('.mitra-window') as HTMLElement;
@@ -465,6 +464,7 @@ export function toggleMitraChatbotWindow(): boolean {
 
     if (isCurrentlyOpen) {
       win.classList.remove('expanded', 'active', 'open');
+      win.classList.add('minimized');
       win.style.setProperty('display', 'none', 'important');
       win.style.setProperty('visibility', 'hidden', 'important');
       win.style.setProperty('opacity', '0', 'important');
@@ -515,6 +515,7 @@ export function toggleMitraChatbotWindow(): boolean {
         shell.style.removeProperty('inset');
       }
 
+      win.classList.remove('minimized');
       win.classList.add('expanded', 'active', 'open');
       win.style.setProperty('display', 'flex', 'important');
       win.style.setProperty('visibility', 'visible', 'important');

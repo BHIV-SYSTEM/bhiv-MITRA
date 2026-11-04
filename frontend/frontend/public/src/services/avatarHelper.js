@@ -74,6 +74,37 @@ export function setCachedActiveAvatar(avatar, isVideo = undefined) {
 const isLegacyDefault = (s) => s && typeof s === 'string' && s.includes('AAEAAElEQVR4nOz915Nk550lCB4X17UMrSNSa53Q');
 
 export function getActiveMitraAvatar(ctxStore) {
+  // Check localStorage first so user preset and custom selections reflect immediately
+  if (typeof localStorage !== 'undefined') {
+    const custom = localStorage.getItem('mitra_companion_asset') || 
+                   localStorage.getItem('mitra_active_avatar') ||
+                   localStorage.getItem('mitra_avatar_custom') || 
+                   localStorage.getItem('mitra_custom_avatar') || 
+                   localStorage.getItem('mitra_avatar_data_url');
+    if (custom && custom !== 'default' && custom !== 'indexed_db_asset' && custom.length > 5) {
+      if (isLegacyDefault(custom)) {
+        localStorage.removeItem('mitra_companion_asset');
+        localStorage.removeItem('mitra_active_avatar');
+        localStorage.removeItem('mitra_avatar_custom');
+        localStorage.removeItem('mitra_custom_avatar');
+        localStorage.removeItem('mitra_avatar_data_url');
+      } else {
+        cachedActiveAvatar = custom;
+        return custom;
+      }
+    }
+  }
+
+  if (ctxStore && typeof ctxStore.getAvatar === 'function') {
+    const custom = ctxStore.getAvatar();
+    if (custom && custom !== 'default' && custom !== 'indexed_db_asset' && custom.length > 5) {
+      if (!isLegacyDefault(custom)) {
+        cachedActiveAvatar = custom;
+        return custom;
+      }
+    }
+  }
+
   if (cachedActiveAvatar && cachedActiveAvatar !== 'default') {
     if (isLegacyDefault(cachedActiveAvatar)) {
       cachedActiveAvatar = null;
@@ -81,37 +112,7 @@ export function getActiveMitraAvatar(ctxStore) {
       return cachedActiveAvatar;
     }
   }
-  if (ctxStore && typeof ctxStore.getAvatar === 'function') {
-    const custom = ctxStore.getAvatar();
-    if (custom && custom !== 'default' && custom !== 'indexed_db_asset' && custom.length > 20) {
-      if (isLegacyDefault(custom)) {
-        if (typeof localStorage !== 'undefined') {
-          localStorage.removeItem('mitra_companion_asset');
-          localStorage.removeItem('mitra_avatar_custom');
-          localStorage.removeItem('mitra_custom_avatar');
-          localStorage.removeItem('mitra_avatar_data_url');
-        }
-      } else {
-        return custom;
-      }
-    }
-  }
-  if (typeof localStorage !== 'undefined') {
-    const custom = localStorage.getItem('mitra_companion_asset') || 
-                   localStorage.getItem('mitra_avatar_custom') || 
-                   localStorage.getItem('mitra_custom_avatar') || 
-                   localStorage.getItem('mitra_avatar_data_url');
-    if (custom && custom !== 'default' && custom !== 'indexed_db_asset' && custom.length > 20) {
-      if (isLegacyDefault(custom)) {
-        localStorage.removeItem('mitra_companion_asset');
-        localStorage.removeItem('mitra_avatar_custom');
-        localStorage.removeItem('mitra_custom_avatar');
-        localStorage.removeItem('mitra_avatar_data_url');
-      } else {
-        return custom;
-      }
-    }
-  }
+
   return MITRA_CANONICAL_AVATAR_DATA_URL;
 }
 
@@ -176,6 +177,10 @@ export function renderAvatarElement(avatarDataUrl, className = 'mitra-avatar-med
     img.style.borderRadius = '50%';
     img.style.pointerEvents = 'none';
     img.draggable = false;
+    img.onerror = () => {
+      img.onerror = null;
+      img.src = MITRA_CANONICAL_AVATAR_DATA_URL;
+    };
     return img;
   }
 }

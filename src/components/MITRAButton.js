@@ -41,10 +41,8 @@ export class MITRAButton {
         if (isPointerDown) {
           isPointerDown = false;
           const dist = Math.hypot(upEvt.clientX - startX, upEvt.clientY - startY);
-          if (dist < 12) {
-            hasDragged = false;
-            eventBus.emit('chat.opened', {});
-            if (onClickCallback) onClickCallback();
+          if (dist >= 12) {
+            hasDragged = true;
           }
         }
       };
@@ -53,14 +51,18 @@ export class MITRAButton {
       window.addEventListener('pointerup', onPointerUp);
     });
 
+    let lastClickTime = 0;
     this.element.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
       const dist = Math.hypot(e.clientX - startX, e.clientY - startY);
-      if (!hasDragged || dist < 12) {
+      const now = Date.now();
+      if (!hasDragged && dist < 12 && now - lastClickTime > 250) {
+        lastClickTime = now;
         eventBus.emit('chat.opened', {});
         if (onClickCallback) onClickCallback();
       }
+      hasDragged = false;
     });
 
     // Right-click to change companion avatar
@@ -71,7 +73,8 @@ export class MITRAButton {
 
     // Listen for avatar updates
     eventBus.on('avatar.changed', (data) => {
-      this.updateAvatar(getActiveMitraAvatar(contextStore));
+      const activeAvatar = (data && data.avatar) ? data.avatar : getActiveMitraAvatar(contextStore);
+      this.updateAvatar(activeAvatar);
     });
 
     // Initial avatar rendering (fallback to canonical Mitra avatar)

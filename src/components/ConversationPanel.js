@@ -131,8 +131,8 @@ export class ConversationPanel {
       });
 
       // Dynamic avatar update listener
-      eventBus.on('avatar.changed', () => {
-        const newAvatar = getActiveMitraAvatar(this.contextStore);
+      eventBus.on('avatar.changed', (data) => {
+        const newAvatar = (data && data.avatar) ? data.avatar : getActiveMitraAvatar(this.contextStore);
         const heroBadge = this.element.querySelector('.mitra-hero-badge-container');
         if (heroBadge) {
           const oldMedia = heroBadge.querySelector('.mitra-hero-badge-img');
