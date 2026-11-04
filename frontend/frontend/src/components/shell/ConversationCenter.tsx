@@ -13,6 +13,7 @@ import { CompanionService } from '../../services/companion.service';
 import { authApi } from '../../services/authApi';
 import { getApiBase, getAuthHeaders } from '../../services/apiConfig';
 import ConversationCard from '../cards/ConversationCard';
+import { CompanionAvatarMedia } from './CompanionSwitcher';
 
 const ThinkingIndicator = () => (
   <motion.div
@@ -209,13 +210,10 @@ const CompanionHomeView: React.FC<{
             title="Open MITRA Companion Chatbot"
           >
             {companionAvatar ? (
-              <img
+              <CompanionAvatarMedia
                 src={companionAvatar}
                 alt={companionName || 'Mitra Companion'}
                 className="w-full h-full object-cover"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = 'none';
-                }}
               />
             ) : (
               <Zap size={18} className="text-brand-light" />

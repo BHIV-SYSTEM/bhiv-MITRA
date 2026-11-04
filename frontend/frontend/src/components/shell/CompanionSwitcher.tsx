@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, Upload, RotateCcw, Check, X, Bot } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useCompanionStore, toggleMitraChatbotWindow } from '../../store/companion.store';
+import { companionStorage } from '../../services/companionStorage';
 import { showToast } from './Toast';
 
 export interface CompanionPreset {
@@ -45,21 +46,90 @@ export const COMPANION_PRESETS: CompanionPreset[] = [
   },
 ];
 
+export function isVideoAssetUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  const s = url.toLowerCase();
+  return (
+    s.startsWith('data:video/') ||
+    s.includes('.mp4') ||
+    s.includes('.webm') ||
+    s.includes('video/mp4') ||
+    s.includes('video/webm')
+  );
+}
+
+export const CompanionAvatarMedia: React.FC<{
+  src: string;
+  alt: string;
+  className?: string;
+}> = ({ src, alt, className = "w-full h-full object-cover" }) => {
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    setHasError(false);
+  }, [src]);
+
+  if (hasError || !src) {
+    return <Bot size={16} className="text-brand-light" />;
+  }
+
+  if (isVideoAssetUrl(src)) {
+    return (
+      <video
+        src={src}
+        autoPlay
+        loop
+        muted
+        playsInline
+        className={className}
+        onError={() => setHasError(true)}
+      />
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      onError={() => {
+        if (src !== '/assets/mitra_avatar_default.png') {
+          setHasError(true);
+        }
+      }}
+    />
+  );
+};
+
 export const CompanionSwitcher: React.FC = () => {
   const { companionAvatar, companionName, setCompanionAvatar, chatbotOpen } = useCompanionStore();
   const [isOpen, setIsOpen] = useState(false);
-  const [avatarError, setAvatarError] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Sync avatar error reset when avatar changes
+  // Restore avatar from high-capacity IndexedDB on mount if available
   useEffect(() => {
-    setAvatarError(false);
-  }, [companionAvatar]);
+    companionStorage.getAsset('current_companion').then((asset) => {
+      if (asset && asset !== 'default' && asset.length > 20) {
+        const current = useCompanionStore.getState().companionAvatar;
+        if (current !== asset) {
+          useCompanionStore.getState().setCompanionAvatar(asset, 'Custom Companion');
+        }
+      }
+    }).catch(() => {});
+  }, []);
 
   // Sync with web component avatar changes
   useEffect(() => {
     const handleAvatarUpdate = (e: any) => {
-      const avatar = e.detail?.companionAvatar || e.detail?.avatar || (typeof localStorage !== 'undefined' ? (localStorage.getItem('mitra_companion_asset') || localStorage.getItem('mitra_avatar_custom') || localStorage.getItem('mitra_custom_avatar')) : null);
+      const avatar =
+        e.detail?.companionAvatar ||
+        e.detail?.avatar ||
+        (typeof localStorage !== 'undefined'
+          ? localStorage.getItem('mitra_companion_asset') ||
+            localStorage.getItem('mitra_avatar_custom') ||
+            localStorage.getItem('mitra_custom_avatar')
+          : null);
       const current = useCompanionStore.getState().companionAvatar;
       if (avatar && avatar !== 'default' && avatar !== current) {
         useCompanionStore.getState().setCompanionAvatar(avatar, 'Custom Companion');
@@ -78,8 +148,8 @@ export const CompanionSwitcher: React.FC = () => {
   // Sync with web component chatbot open/close state
   useEffect(() => {
     const handleOrbState = (e: any) => {
-      const isOpen = Boolean(e.detail?.open);
-      useCompanionStore.getState().setChatbotOpen(isOpen);
+      const isWindowOpen = Boolean(e.detail?.open);
+      useCompanionStore.getState().setChatbotOpen(isWindowOpen);
     };
     window.addEventListener('mitra:orb-state-changed', handleOrbState);
     return () => {
@@ -87,46 +157,71 @@ export const CompanionSwitcher: React.FC = () => {
     };
   }, []);
 
-  const handleSelectPreset = (preset: CompanionPreset) => {
+  const handleSelectPreset = async (preset: CompanionPreset) => {
     setCompanionAvatar(preset.avatarUrl, preset.name);
+    await companionStorage.setAsset('current_companion', preset.avatarUrl);
     showToast('success', 'Companion Updated', `Switched to ${preset.name}`);
     setIsOpen(false);
   };
 
-  const handleResetDefault = () => {
+  const handleResetDefault = async () => {
     const defaultPreset = COMPANION_PRESETS[0];
     setCompanionAvatar(defaultPreset.avatarUrl, defaultPreset.name);
+    await companionStorage.removeAsset('current_companion');
     showToast('info', 'Reset to Default', 'Restored official Mitra companion avatar');
     setIsOpen(false);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const processFile = async (file: File) => {
+    const isImage = file.type ? file.type.startsWith('image/') : false;
+    const isVideo =
+      file.type ? file.type.startsWith('video/') :
+      (file.name.toLowerCase().endsWith('.mp4') || file.name.toLowerCase().endsWith('.webm'));
 
-    if (!file.type.startsWith('image/')) {
-      showToast('error', 'Invalid File', 'Please upload a PNG, JPG, GIF, or WebP image');
+    if (!isImage && !isVideo) {
+      showToast('error', 'Unsupported Format', 'Please upload PNG, JPG, GIF, WebP, MP4, or WebM');
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      showToast('error', 'File Too Large', 'Please upload an image under 5MB');
+    if (file.size > 30 * 1024 * 1024) {
+      showToast('error', 'File Too Large', 'Please upload a companion asset under 30MB');
       return;
     }
 
+    const companionTitle = file.name.replace(/\.[^/.]+$/, '').trim() || 'Custom Companion';
+
+    // 1. Instant 0ms local preview via object URL
+    const previewUrl = URL.createObjectURL(file);
+    setCompanionAvatar(previewUrl, companionTitle);
+    showToast('success', 'Companion Uploaded', `${file.name} is now your active companion`);
+    setIsOpen(false);
+
+    // 2. Read full Data URL in background to persist across reboots in IndexedDB
     const reader = new FileReader();
-    reader.onload = (event) => {
-      const result = event.target?.result as string;
-      if (result) {
-        setCompanionAvatar(result, 'Custom Companion');
-        showToast('success', 'Custom Companion Set', 'Your uploaded avatar is now active');
-        setIsOpen(false);
+    reader.onload = async (event) => {
+      const dataUrl = event.target?.result as string;
+      if (dataUrl) {
+        setCompanionAvatar(dataUrl, companionTitle);
+        await companionStorage.setAsset('current_companion', dataUrl);
       }
     };
     reader.readAsDataURL(file);
+  };
 
-    // Reset file input value so same file can be uploaded again if needed
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      processFile(file);
+    }
     e.target.value = '';
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      processFile(e.dataTransfer.files[0]);
+    }
   };
 
   // Determine current active preset id if matching
@@ -134,40 +229,32 @@ export const CompanionSwitcher: React.FC = () => {
     p => p.avatarUrl === companionAvatar || p.name === companionName
   );
 
+  const isVideoActive = isVideoAssetUrl(companionAvatar);
+
   return (
     <div className="relative flex-shrink-0">
       {/* ── TopBar Trigger Button: Official Mitra Avatar Icon ── */}
       <button
         id="topbar-companion-switcher-btn"
         onClick={() => {
-          const opened = toggleMitraChatbotWindow();
-          showToast('info', 'MITRA Companion', opened ? 'Chatbot opened' : 'Chatbot closed');
-        }}
-        onContextMenu={(e) => {
-          e.preventDefault();
           setIsOpen(!isOpen);
         }}
         className={cn(
           "w-9 h-9 min-w-[36px] min-h-[36px] rounded-full p-0.5 flex items-center justify-center transition-all cursor-pointer relative group active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand",
-          chatbotOpen
+          isOpen || chatbotOpen
             ? "border-2 border-brand shadow-glow ring-2 ring-brand/40 scale-105"
             : "border border-brand/50 hover:border-brand bg-surface-overlay hover:bg-surface-hover hover:shadow-glow shadow-xs"
         )}
-        title={`Mitra Companion: ${companionName} (Click to toggle Chatbot)`}
-        aria-label="Open Mitra Companion Chatbot"
-        aria-expanded={chatbotOpen}
+        title="Mitra Companion: Click to choose avatar or switch persona"
+        aria-label="Open Mitra Companion Customizer"
+        aria-expanded={isOpen}
       >
         <div className="w-full h-full rounded-full overflow-hidden flex items-center justify-center bg-brand/20">
-          {!avatarError ? (
-            <img
-              src={companionAvatar || '/assets/mitra_avatar_default.png'}
-              alt={companionName || 'Mitra Companion'}
-              className="w-full h-full object-cover rounded-full pointer-events-none transition-transform duration-300 group-hover:scale-110"
-              onError={() => setAvatarError(true)}
-            />
-          ) : (
-            <Bot size={16} className="text-brand-light" />
-          )}
+          <CompanionAvatarMedia
+            src={companionAvatar || '/assets/mitra_avatar_default.png'}
+            alt={companionName || 'Mitra Companion'}
+            className="w-full h-full object-cover rounded-full pointer-events-none transition-transform duration-300 group-hover:scale-110"
+          />
         </div>
 
         {/* Live Active Status Indicator Dot */}
@@ -195,7 +282,7 @@ export const CompanionSwitcher: React.FC = () => {
               transition={{ duration: 0.18 }}
               className="absolute right-0 top-11 w-72 sm:w-80 p-3.5 rounded-2xl bg-surface-elevated border border-border-default shadow-2xl z-50 flex flex-col gap-3 select-none max-h-[calc(100dvh-5.5rem)] overflow-y-auto overscroll-contain"
               role="dialog"
-              aria-label="Switch Mitra Companion"
+              aria-label="Custom Companion System"
             >
               {/* Header */}
               <div className="flex items-center justify-between border-b border-border-subtle pb-2.5">
@@ -204,8 +291,8 @@ export const CompanionSwitcher: React.FC = () => {
                     <Sparkles size={13} />
                   </div>
                   <div>
-                    <h3 className="text-xs font-bold text-text-primary tracking-tight">Mitra Companion</h3>
-                    <p className="text-[10px] text-text-muted">Switch persona or customize avatar</p>
+                    <h3 className="text-xs font-bold text-text-primary tracking-tight">Custom Companion</h3>
+                    <p className="text-[10px] text-text-muted">Choose persona or upload custom asset</p>
                   </div>
                 </div>
                 <button
@@ -217,21 +304,26 @@ export const CompanionSwitcher: React.FC = () => {
                 </button>
               </div>
 
+              {/* Supported Formats Banner */}
+              <div className="flex items-center justify-between px-2 py-1 rounded-lg bg-surface-overlay border border-border-subtle text-[10px] text-text-muted">
+                <span className="font-semibold text-text-secondary">Supported Formats:</span>
+                <span className="font-mono text-brand-light font-bold">PNG · JPG · GIF · WebP · MP4</span>
+              </div>
+
               {/* Active Companion Banner */}
               <div className="p-2.5 rounded-xl bg-brand/10 border border-brand/25 flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-full border-2 border-brand/60 overflow-hidden flex-shrink-0 shadow-sm bg-brand/20">
-                  <img
+                <div className="w-10 h-10 rounded-full border-2 border-brand/60 overflow-hidden flex-shrink-0 shadow-sm bg-brand/20 flex items-center justify-center">
+                  <CompanionAvatarMedia
                     src={companionAvatar || '/assets/mitra_avatar_default.png'}
                     alt="Active Companion"
                     className="w-full h-full object-cover"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = '/assets/mitra_avatar_default.png';
-                    }}
                   />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-bold text-state-success uppercase tracking-wider">Active Companion</span>
+                    <span className="text-[10px] font-bold text-state-success uppercase tracking-wider">
+                      {isVideoActive ? '🎬 Looping Video Active' : 'Active Companion'}
+                    </span>
                     <span className="w-1.5 h-1.5 rounded-full bg-state-success" />
                   </div>
                   <div className="text-xs font-bold text-text-primary truncate mt-0.5">
@@ -263,16 +355,13 @@ export const CompanionSwitcher: React.FC = () => {
                         )}
                       >
                         <div className={cn(
-                          "w-8 h-8 rounded-full overflow-hidden flex-shrink-0 border transition-transform group-hover:scale-105",
+                          "w-8 h-8 rounded-full overflow-hidden flex-shrink-0 border transition-transform group-hover:scale-105 bg-brand/10",
                           isSelected ? "border-brand ring-1 ring-brand/40" : "border-border-subtle"
                         )}>
-                          <img
+                          <CompanionAvatarMedia
                             src={preset.avatarUrl}
                             alt={preset.name}
                             className="w-full h-full object-cover"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).src = '/assets/mitra_avatar_default.png';
-                            }}
                           />
                         </div>
                         <div className="min-w-0 flex-1">
@@ -299,14 +388,48 @@ export const CompanionSwitcher: React.FC = () => {
                 </div>
               </div>
 
-              {/* Action Buttons: Custom Upload & Reset */}
+              {/* Drag and Drop Zone */}
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDragOver(true);
+                }}
+                onDragLeave={() => setIsDragOver(false)}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+                className={cn(
+                  "p-3 rounded-xl border border-dashed flex flex-col items-center justify-center text-center cursor-pointer transition-all",
+                  isDragOver
+                    ? "border-brand bg-brand/20 scale-[1.01]"
+                    : "border-border-default/80 bg-surface-overlay/60 hover:bg-surface-hover hover:border-brand/60"
+                )}
+              >
+                <div className="w-7 h-7 rounded-full bg-brand/20 flex items-center justify-center text-brand-light mb-1">
+                  <Upload size={14} />
+                </div>
+                <p className="text-xs font-semibold text-text-primary">
+                  Upload Custom Companion
+                </p>
+                <p className="text-[10px] text-text-muted mt-0.5">
+                  Drag & drop PNG, JPG, GIF, WebP, or MP4
+                </p>
+                <span className="mt-1 text-[9px] text-brand-light font-medium">
+                  ✨ Transparency &amp; Animations Preserved
+                </span>
+              </div>
+
+              {/* Action Buttons: Toggle Chatbot & Reset */}
               <div className="pt-2 border-t border-border-subtle flex flex-col gap-1.5">
                 <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-full h-8 px-3 rounded-xl bg-surface-overlay hover:bg-surface-hover border border-border-subtle text-text-secondary hover:text-text-primary text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer active:scale-95"
+                  onClick={() => {
+                    const opened = toggleMitraChatbotWindow();
+                    showToast('info', 'MITRA Companion', opened ? 'Chatbot opened' : 'Chatbot closed');
+                    setIsOpen(false);
+                  }}
+                  className="w-full h-8 px-3 rounded-xl bg-brand/20 hover:bg-brand/30 border border-brand/40 text-brand-light text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer active:scale-95"
                 >
-                  <Upload size={13} className="text-brand-light" />
-                  <span>Upload Custom Avatar</span>
+                  <Bot size={13} />
+                  <span>{chatbotOpen ? 'Close Floating Chatbot' : 'Open Floating Chatbot'}</span>
                 </button>
 
                 <button
@@ -321,7 +444,7 @@ export const CompanionSwitcher: React.FC = () => {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/png, image/jpeg, image/gif, image/webp"
+                  accept="image/png, image/jpeg, image/jpg, image/gif, image/webp, video/mp4, video/webm"
                   onChange={handleFileUpload}
                   className="hidden"
                 />
