@@ -159,3 +159,4 @@ export const TermsPage: React.FC<{ onBackToChat: () => void }> = ({ onBackToChat
 };
 
 export default TermsPage;
+

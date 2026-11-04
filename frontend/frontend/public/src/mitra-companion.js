@@ -170,7 +170,12 @@ class MitraCompanion extends HTMLElement {
 
     // Avatar customization modal setup (instantiated BEFORE event wiring to avoid TDZ ReferenceError)
     const avatarModal = new AvatarModal(eventBus, contextStore);
-    shell.appendChild(avatarModal.element);
+    mitraWindow.element.appendChild(avatarModal.element);
+    window.__MITRA_OPEN_AVATAR__ = () => {
+      mitraWindow.expand();
+      avatarModal.open();
+    };
+    window.__mitra_open_avatar_modal = window.__MITRA_OPEN_AVATAR__;
 
     avatarModal.onClose = () => {
       // When avatar modal closes, keep the chatbot expanded only if it wasn't minimized!
@@ -203,6 +208,8 @@ class MitraCompanion extends HTMLElement {
           if (!isNaN(parsedTop)) {
             shell.style.top = `${Math.max(20, Math.min(parsedTop, window.innerHeight - 680))}px`;
           }
+          shell.style.setProperty('bottom', 'auto', 'important');
+          shell.style.setProperty('right', 'auto', 'important');
         }
       }
       mitraButton.hide();

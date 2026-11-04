@@ -408,7 +408,7 @@ export function toggleMitraChatbotWindow(): boolean {
     let companion = document.querySelector('mitra-companion') as HTMLElement;
     if (!companion && typeof document !== 'undefined') {
       companion = document.createElement('mitra-companion');
-      companion.setAttribute('stylesheet-path', '/styles/mitra-companion.css?v=v52');
+      companion.setAttribute('stylesheet-path', '/styles/mitra-companion.css?v=v54');
       companion.setAttribute('api-base-url', 'https://mitra.blackholeinfiverse.com');
       document.body.appendChild(companion);
     }
@@ -438,6 +438,8 @@ export function toggleMitraChatbotWindow(): boolean {
           shell.style.setProperty('position', 'fixed', 'important');
           shell.style.setProperty('bottom', '24px', 'important');
           shell.style.setProperty('right', '24px', 'important');
+          shell.style.setProperty('top', 'auto', 'important');
+          shell.style.setProperty('left', 'auto', 'important');
           shell.style.setProperty('z-index', '9999999', 'important');
           shell.style.setProperty('pointer-events', 'auto', 'important');
         }

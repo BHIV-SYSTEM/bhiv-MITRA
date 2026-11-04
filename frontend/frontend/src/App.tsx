@@ -13,6 +13,8 @@ import { MemoryDashboardModal } from './components/modals/MemoryDashboardModal';
 import { VoiceTalkModal } from './components/modals/VoiceTalkModal';
 import { MemoryMindMapModal } from './components/modals/MemoryMindMapModal';
 import { IntegrationsModal } from './components/modals/IntegrationsModal';
+import WhatsAppWebModal from './components/modals/WhatsAppWebModal';
+import { whatsAppWebService } from './services/whatsappWebService';
 import InstallPwaBanner from './components/shell/InstallPwaBanner';
 import Toast, { showToast } from './components/shell/Toast';
 import CalendarPage from './components/pages/CalendarPage';
@@ -24,6 +26,7 @@ import AnalyticsPage from './components/pages/AnalyticsPage';
 import Login from './components/auth/Login';
 import TermsPage from './components/pages/TermsPage';
 import PrivacyPage from './components/pages/PrivacyPage';
+import FloatingOrb from './components/shell/FloatingOrb';
 import { useCompanionStore, useIsMobile, toggleMitraChatbotWindow } from './store/companion.store';
 import { CompanionService } from './services/companion.service';
 import { getAuthToken, setAuthToken, getApiBase, getAuthHeaders } from './services/apiConfig';
@@ -129,10 +132,12 @@ const App: React.FC = () => {
   const [voiceTalkOpen, setVoiceTalkOpen] = useState(false);
   const [mindMapOpen, setMindMapOpen] = useState(false);
   const [integrationsOpen, setIntegrationsOpen] = useState(false);
+  const [waWebOpen, setWaWebOpen] = useState(false);
 
   useEffect(() => {
     (window as any).__MITRA_SETTINGS__ = () => setSettingsOpen(true);
     (window as any).__MITRA_INTEGRATIONS__ = () => setIntegrationsOpen(true);
+    (window as any).__MITRA_WHATSAPP_WEB__ = () => setWaWebOpen(true);
 
     const handlePopState = () => {
       const p = (window.location.pathname || '').toLowerCase();
@@ -153,6 +158,39 @@ const App: React.FC = () => {
     window.addEventListener('mitra:orb-state-changed', handleOrbState);
     return () => window.removeEventListener('mitra:orb-state-changed', handleOrbState);
   }, []);
+
+  // Listen for real-time Multi-Channel incoming messages (WhatsApp & Telegram)
+  useEffect(() => {
+    whatsAppWebService.connect();
+    const unsubscribeWa = whatsAppWebService.onNotification((notif) => {
+      console.log('[App] Real-time WhatsApp Notification:', notif);
+      const sender = notif.senderName || notif.senderNumber || 'Unknown';
+      addNotification({
+        type: 'info',
+        title: 'WhatsApp: ' + sender,
+        body: notif.body || (notif.hasMedia ? '[Media / Image Attachment]' : 'New message received'),
+        read: false
+      });
+      showToast('info', 'WhatsApp: ' + sender, notif.body || 'New WhatsApp message');
+    });
+
+    const unsubscribeTg = whatsAppWebService.subscribeTelegramNotification((tgNotif) => {
+      console.log('[App] Real-time Telegram Notification:', tgNotif);
+      const sender = tgNotif.senderName || 'Telegram User';
+      addNotification({
+        type: 'info',
+        title: 'Telegram: ' + sender,
+        body: tgNotif.body || 'New Telegram message received',
+        read: false
+      });
+      showToast('info', 'Telegram: ' + sender, tgNotif.body || 'New Telegram message');
+    });
+
+    return () => {
+      unsubscribeWa();
+      unsubscribeTg();
+    };
+  }, [addNotification]);
 
   // Global Ctrl+K / Cmd+K & Ctrl+M / Cmd+M listener
   useEffect(() => {
@@ -562,8 +600,14 @@ const App: React.FC = () => {
       {/* Integrations Modal */}
       <IntegrationsModal isOpen={integrationsOpen} onClose={() => setIntegrationsOpen(false)} />
 
+      {/* WhatsApp Web Automation Modal (QR + Contacts + Messaging) */}
+      <WhatsAppWebModal isOpen={waWebOpen} onClose={() => setWaWebOpen(false)} />
+
       {/* Native PWA Install Banner */}
       <InstallPwaBanner />
+
+      {/* Floating Mitra Companion Orb */}
+      <FloatingOrb />
 
       {/* Global Toast Notifications */}
       <Toast />

@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Bell, PanelRight, Zap, Menu, Settings,
   Calendar, CheckSquare, PlayCircle, TrendingUp, SlidersHorizontal,
-  Mic, Clock, Network, Brain, ChevronDown
+  Mic, Clock, Network, Brain, ChevronDown, MessageSquare, Send
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useCompanionStore, resolveDisplayName } from '../../store/companion.store';
@@ -284,6 +284,27 @@ const TopBar: React.FC<Props> = ({ onSearch }) => {
                       >
                         <Brain size={13} className="text-indigo-400 flex-shrink-0" />
                         <span className="text-2xs font-medium text-text-secondary truncate">Memory</span>
+                      </button>
+                      <button
+                        onClick={() => handleToolAction(() => (window as any).__MITRA_WHATSAPP_WEB__?.())}
+                        className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-white/10 text-left transition-all col-span-2 bg-gradient-to-r from-emerald-500/15 via-sky-500/15 to-purple-500/15 border border-white/15 group cursor-pointer"
+                      >
+                        <div className="flex items-center -space-x-1 shrink-0">
+                          <span className="w-5 h-5 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+                            <MessageSquare size={10} />
+                          </span>
+                          <span className="w-5 h-5 rounded-full bg-sky-500/20 border border-sky-500/40 flex items-center justify-center text-sky-400">
+                            <Send size={10} />
+                          </span>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-2xs font-bold text-white group-hover:text-indigo-300 transition-colors truncate">
+                            Multi-Channel Messaging
+                          </div>
+                          <div className="text-3xs text-gray-400 truncate">
+                            WhatsApp &amp; Telegram Hub
+                          </div>
+                        </div>
                       </button>
                     </div>
                   </motion.div>

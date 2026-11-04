@@ -7,7 +7,10 @@ export class AvatarModal {
     this.contextStore = contextStore;
     this.element = document.createElement('div');
     this.element.className = 'mitra-avatar-modal-overlay';
-    this.element.style.display = 'none';
+    this.element.style.setProperty('display', 'none', 'important');
+    this.element.style.setProperty('visibility', 'hidden', 'important');
+    this.element.style.setProperty('opacity', '0', 'important');
+    this.element.style.setProperty('pointer-events', 'none', 'important');
 
     this.render();
   }
@@ -303,13 +306,20 @@ export class AvatarModal {
   open() {
     this.isOpen = true;
     this.render();
-    this.element.style.display = 'flex';
+    this.element.style.setProperty('display', 'flex', 'important');
+    this.element.style.setProperty('visibility', 'visible', 'important');
+    this.element.style.setProperty('opacity', '1', 'important');
+    this.element.style.setProperty('pointer-events', 'auto', 'important');
+    this.element.style.setProperty('z-index', '99999999', 'important');
   }
 
   close(notifyOnClose = true) {
     const wasOpen = this.isOpen || this.element.style.display === 'flex';
     this.isOpen = false;
-    this.element.style.display = 'none';
+    this.element.style.setProperty('display', 'none', 'important');
+    this.element.style.setProperty('visibility', 'hidden', 'important');
+    this.element.style.setProperty('opacity', '0', 'important');
+    this.element.style.setProperty('pointer-events', 'none', 'important');
     if (wasOpen && notifyOnClose && typeof this.onClose === 'function') {
       try { this.onClose(); } catch (err) {}
     }

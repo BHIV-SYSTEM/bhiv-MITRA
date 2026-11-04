@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   X, Mail, Calendar, ShieldCheck,
   Package, Bug, GitPullRequest, Lock, AlertTriangle,
-  Smartphone, CheckCircle2, Trash2, ChevronDown, ChevronUp, Radio
+  Smartphone, CheckCircle2, Trash2, ChevronDown, ChevronUp, Radio, Send
 } from 'lucide-react';
 import { authApi } from '../../services/authApi';
 import { getApiBase, getAuthHeaders } from '../../services/apiConfig';
@@ -1218,6 +1218,58 @@ export const IntegrationsModal: React.FC<IntegrationsModalProps> = ({ isOpen, on
                 </div>
               </div>
             )}
+
+            {/* WhatsApp Web QR & Automation Option */}
+            <div className="pt-2 border-t border-white/5">
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  (window as any).__MITRA_WHATSAPP_WEB__?.();
+                }}
+                className="w-full flex items-center justify-between p-3 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 transition-all cursor-pointer group"
+              >
+                <div className="flex items-center gap-2.5">
+                  <span className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform">
+                    <Smartphone size={16} />
+                  </span>
+                  <div className="text-left">
+                    <div className="text-xs font-semibold text-white">WhatsApp Web QR Automation</div>
+                    <div className="text-3xs text-emerald-400/80">Scan QR, sync contacts & automate personal chats</div>
+                  </div>
+                </div>
+                <span className="text-3xs px-2.5 py-1 rounded-lg bg-emerald-500/30 text-emerald-200 font-semibold group-hover:bg-emerald-500 group-hover:text-black transition-colors">
+                  Open QR Tool →
+                </span>
+              </button>
+            </div>
+
+            {/* Telegram Multi-Channel Integration Option */}
+            <div className="pt-2 border-t border-white/5">
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  if (typeof (window as any).__MITRA_WHATSAPP_WEB__ === 'function') {
+                    (window as any).__MITRA_WHATSAPP_WEB__();
+                  }
+                }}
+                className="w-full flex items-center justify-between p-3 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 text-sky-300 transition-all cursor-pointer group text-left"
+              >
+                <div className="flex items-center gap-2.5">
+                  <span className="w-8 h-8 rounded-lg bg-sky-500/20 flex items-center justify-center text-sky-400 group-hover:scale-105 transition-transform">
+                    <Send size={16} />
+                  </span>
+                  <div className="text-left">
+                    <div className="text-xs font-semibold text-white">Personal Telegram Account (Phone &amp; OTP)</div>
+                    <div className="text-3xs text-sky-400/80">Link your personal Telegram account to send messages directly as yourself (no bot)</div>
+                  </div>
+                </div>
+                <span className="text-3xs px-2.5 py-1 rounded-lg bg-sky-500/30 text-sky-200 font-semibold group-hover:bg-sky-500 group-hover:text-white transition-colors">
+                  Open Telegram Hub →
+                </span>
+              </button>
+            </div>
 
             {/* Collapsible Personal WhatsApp OTP Fallback */}
             <div className="pt-2 border-t border-white/5">

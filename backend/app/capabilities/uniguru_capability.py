@@ -117,18 +117,21 @@ class UniGuruCapability(BaseCapability):
                         ],
                     )
                 elif decision == "block":
-                    return CapabilityResult(
-                        capability=self.name,
-                        intent=intent,
-                        status="blocked",
-                        summary="Request blocked by UniGuru governance.",
-                        data={
-                            "reason": result.get("reason", "Blocked by governance"),
-                            "governance_flags": result.get("governance_flags", {}),
-                            "source": "uniguru_embedded",
-                        },
-                        trace_id=trace_id,
-                    )
+                    gov_flags = result.get("governance_flags", {})
+                    # Only block hard safety violations; ambiguity/uncertainty falls through to knowledge synthesizer
+                    if gov_flags.get("safety", False):
+                        return CapabilityResult(
+                            capability=self.name,
+                            intent=intent,
+                            status="blocked",
+                            summary="Request blocked by UniGuru safety governance.",
+                            data={
+                                "reason": result.get("reason", "Blocked by governance"),
+                                "governance_flags": gov_flags,
+                                "source": "uniguru_embedded",
+                            },
+                            trace_id=trace_id,
+                        )
             except Exception as exc:
                 logger.warning("UniGuru engine error, falling back to LLM: %s", exc)
 

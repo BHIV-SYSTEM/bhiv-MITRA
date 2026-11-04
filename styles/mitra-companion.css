@@ -293,7 +293,7 @@ mitra-companion[hide-fab="true"] #mitra-shell {
   pointer-events: auto !important;
 }
 
-.mitra-window.minimized {
+.mitra-window.minimized:not(.expanded):not(.open):not(.active) {
   display: none !important;
   opacity: 0 !important;
   visibility: hidden !important;
@@ -1264,19 +1264,20 @@ mitra-companion[hide-fab="true"] #mitra-shell {
 
 /* Avatar Customization Modal */
 .mitra-avatar-modal-overlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(8, 8, 12, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  box-sizing: border-box;
-  animation: fadeInModal 0.25s ease;
+  position: absolute !important;
+  inset: 0 !important;
+  background: rgba(8, 8, 12, 0.94) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  z-index: 99999999 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 16px !important;
+  box-sizing: border-box !important;
+  animation: fadeInModal 0.25s ease !important;
   pointer-events: auto !important;
+  border-radius: var(--mitra-radius, 20px) !important;
 }
 
 @keyframes fadeInModal {

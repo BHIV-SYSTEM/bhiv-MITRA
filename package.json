@@ -3,7 +3,14 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "cd frontend/frontend && npm install && CI=false npm run build",
-    "start": "cd frontend/frontend && npm start"
+    "start": "python -m http.server 8080 -d frontend/frontend/build",
+    "serve": "python -m http.server 8080 -d frontend/frontend/build",
+    "dev": "python -m http.server 8080 -d frontend/frontend/build",
+    "landing": "python -m http.server 3000",
+    "react": "cd frontend/frontend && npm start",
+    "build": "cd frontend/frontend && npm run build"
+  },
+  "dependencies": {
+    "node-telegram-bot-api": "^2.1.0"
   }
 }

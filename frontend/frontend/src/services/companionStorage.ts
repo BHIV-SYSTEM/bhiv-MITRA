@@ -112,3 +112,4 @@ class CompanionStorage {
 }
 
 export const companionStorage = new CompanionStorage();
+

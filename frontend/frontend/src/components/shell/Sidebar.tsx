@@ -137,27 +137,9 @@ const DesktopSidebar: React.FC<Props> = ({
               exit={{ opacity: 0 }}
               className="pt-2 px-1 flex items-center justify-center gap-2 text-[10px] text-text-muted/70"
             >
-              <button
-                type="button"
-                onClick={() => {
-                  window.history.pushState({}, '', '/terms');
-                  onSectionChange?.('terms');
-                }}
-                className="hover:text-brand-light transition-colors cursor-pointer bg-transparent border-0 p-0 text-[10px] text-text-muted/70"
-              >
-                Terms
-              </button>
+              <a href="/terms.html" target="_blank" rel="noopener noreferrer" className="hover:text-brand-light transition-colors cursor-pointer bg-transparent border-0 p-0 text-[10px] text-text-muted/70 inline-block">Terms</a>
               <span>·</span>
-              <button
-                type="button"
-                onClick={() => {
-                  window.history.pushState({}, '', '/privacy');
-                  onSectionChange?.('privacy');
-                }}
-                className="hover:text-brand-light transition-colors cursor-pointer bg-transparent border-0 p-0 text-[10px] text-text-muted/70"
-              >
-                Privacy
-              </button>
+              <a href="/privacy.html" target="_blank" rel="noopener noreferrer" className="hover:text-brand-light transition-colors cursor-pointer bg-transparent border-0 p-0 text-[10px] text-text-muted/70 inline-block">Privacy</a>
             </motion.div>
           )}
         </AnimatePresence>
@@ -281,39 +263,10 @@ const MobileSidebarDrawer: React.FC<Props> = ({
                   {isGuest ? 'Create Account / Log In' : 'Account Profile'}
                 </span>
               </button>
-              <button
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  const fn = (window as any).__MITRA_SETTINGS__;
-                  if (fn) fn();
-                }}
-                className="w-full flex items-center gap-3 px-3.5 py-3 min-h-[44px] rounded-xl text-text-muted hover:text-text-secondary hover:bg-surface-overlay transition-all cursor-pointer"
-              >
-                <Settings size={16} />
-                <span className="text-sm font-medium">Settings</span>
-              </button>
-              <div className="pt-2 flex items-center justify-center gap-3 text-xs text-text-muted/70">
-                <button
-                  type="button"
-                  onClick={() => {
-                    window.history.pushState({}, '', '/terms');
-                    onSectionChange?.('terms');
-                  }}
-                  className="hover:text-brand-light transition-colors cursor-pointer bg-transparent border-0 p-0 text-xs text-text-muted/70"
-                >
-                  Terms of Service
-                </button>
-                <span>·</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    window.history.pushState({}, '', '/privacy');
-                    onSectionChange?.('privacy');
-                  }}
-                  className="hover:text-brand-light transition-colors cursor-pointer bg-transparent border-0 p-0 text-xs text-text-muted/70"
-                >
-                  Privacy Policy
-                </button>
+              <div className="pt-2 px-1 flex items-center justify-center gap-2 text-xs text-text-muted/70">
+                <a href="/terms.html" target="_blank" rel="noopener noreferrer" className="hover:text-brand-light transition-colors cursor-pointer bg-transparent border-0 p-0 text-xs text-text-muted/70 inline-block">Terms of Service</a>
+                <span>&middot;</span>
+                <a href="/privacy.html" target="_blank" rel="noopener noreferrer" className="hover:text-brand-light transition-colors cursor-pointer bg-transparent border-0 p-0 text-xs text-text-muted/70 inline-block">Privacy Policy</a>
               </div>
             </div>
           </motion.aside>

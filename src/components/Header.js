@@ -48,7 +48,11 @@ export class Header {
     const headerAvatar = this.element.querySelector('.mitra-header-avatar');
     if (headerAvatar) {
       headerAvatar.addEventListener('click', (e) => {
+        e.preventDefault();
         e.stopPropagation();
+        if (typeof window !== 'undefined' && typeof window.__MITRA_OPEN_AVATAR__ === 'function') {
+          window.__MITRA_OPEN_AVATAR__();
+        }
         if (onAvatarChange) onAvatarChange();
       });
       headerAvatar.addEventListener('mouseenter', () => {
@@ -95,7 +99,11 @@ export class Header {
     const avatarBtn = this.element.querySelector('#btn-avatar');
     if (avatarBtn) {
       avatarBtn.addEventListener('click', (e) => {
+        e.preventDefault();
         e.stopPropagation();
+        if (typeof window !== 'undefined' && typeof window.__MITRA_OPEN_AVATAR__ === 'function') {
+          window.__MITRA_OPEN_AVATAR__();
+        }
         if (onAvatarChange) onAvatarChange();
       });
       avatarBtn.addEventListener('pointerdown', (e) => e.stopPropagation());

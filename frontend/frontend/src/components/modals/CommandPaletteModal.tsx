@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Calendar, CheckSquare, Bell, BookOpen, PlayCircle, Zap, ArrowRight, X, Clock } from 'lucide-react';
+import {
+  motion, AnimatePresence } from 'framer-motion';
+import {
+  MessageSquare, Search, Calendar, CheckSquare, Bell, BookOpen, PlayCircle, Zap, ArrowRight, X, Clock } from 'lucide-react';
 
 interface CommandItem {
   id: string;
@@ -127,6 +129,17 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({ isOpen
       subtitle: 'Create a timed reminder alert',
       icon: Bell,
       action: () => sendPrompt('Remind me to ')
+    },
+    {
+      id: 'whatsapp-web',
+      category: 'Actions',
+      label: 'Open WhatsApp Web Automation (QR Code)',
+      subtitle: 'Connect personal WhatsApp, sync contacts and send messages',
+      icon: MessageSquare,
+      action: () => {
+        onClose();
+        (window as any).__MITRA_WHATSAPP_WEB__?.();
+      }
     }
   ];
 

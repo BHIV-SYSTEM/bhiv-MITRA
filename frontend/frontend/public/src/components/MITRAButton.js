@@ -17,8 +17,8 @@ export class MITRAButton {
     this.badge = new NotificationBadge(eventBus);
     this.element.appendChild(this.badge.element);
 
-    let startX = 0;
-    let startY = 0;
+    let startX = null;
+    let startY = null;
     let isPointerDown = false;
     let hasDragged = false;
 
@@ -30,8 +30,10 @@ export class MITRAButton {
       hasDragged = false;
 
       const onPointerMove = (moveEvent) => {
-        if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) > 12) {
-          hasDragged = true;
+        if (startX !== null && startY !== null) {
+          if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) > 16) {
+            hasDragged = true;
+          }
         }
       };
 
@@ -40,9 +42,11 @@ export class MITRAButton {
         window.removeEventListener('pointerup', onPointerUp);
         if (isPointerDown) {
           isPointerDown = false;
-          const dist = Math.hypot(upEvt.clientX - startX, upEvt.clientY - startY);
-          if (dist >= 12) {
-            hasDragged = true;
+          if (startX !== null && startY !== null) {
+            const dist = Math.hypot(upEvt.clientX - startX, upEvt.clientY - startY);
+            if (dist > 16) {
+              hasDragged = true;
+            }
           }
         }
       };
@@ -55,14 +59,16 @@ export class MITRAButton {
     this.element.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      const dist = Math.hypot(e.clientX - startX, e.clientY - startY);
+      const dist = (startX !== null && startY !== null) ? Math.hypot(e.clientX - startX, e.clientY - startY) : 0;
       const now = Date.now();
-      if (!hasDragged && dist < 12 && now - lastClickTime > 250) {
+      if (!hasDragged && dist < 18 && now - lastClickTime > 200) {
         lastClickTime = now;
         eventBus.emit('chat.opened', {});
         if (onClickCallback) onClickCallback();
       }
       hasDragged = false;
+      startX = null;
+      startY = null;
     });
 
     // Right-click to change companion avatar

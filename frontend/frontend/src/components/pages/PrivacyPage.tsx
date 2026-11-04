@@ -156,3 +156,4 @@ export const PrivacyPage: React.FC<{ onBackToChat: () => void }> = ({ onBackToCh
 };
 
 export default PrivacyPage;
+
