@@ -843,11 +843,12 @@ mitra-companion[hide-fab="true"] #mitra-shell {
   -webkit-backdrop-filter: blur(24px);
   z-index: 10;
   padding: 20px;
-  display: flex;
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
   flex-direction: column;
   gap: 16px;
   opacity: 0;
-  pointer-events: none;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   transform: translateY(20px);
   overflow-y: auto;
@@ -855,11 +856,18 @@ mitra-companion[hide-fab="true"] #mitra-shell {
 
 .mitra-launcher.active {
   display: flex !important;
+  visibility: visible !important;
   opacity: 1 !important;
   pointer-events: auto !important;
   transform: translateY(0) !important;
-  visibility: visible !important;
   z-index: 100 !important;
+}
+
+.mitra-launcher:not(.active),
+.mitra-launcher:not(.active) * {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 
 @keyframes pulseBrain {

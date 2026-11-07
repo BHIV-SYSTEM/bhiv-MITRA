@@ -134,6 +134,15 @@ export class Footer {
       triggerSend();
     });
 
+    // Close any open overlay drawers when user interacts with input
+    const closeDrawersOnInput = () => {
+      if (typeof window !== 'undefined' && typeof window.__mitra_close_launcher === 'function') {
+        window.__mitra_close_launcher();
+      }
+    };
+    input.addEventListener('focus', closeDrawersOnInput);
+    input.addEventListener('click', closeDrawersOnInput);
+
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -148,83 +157,111 @@ export class Footer {
 
     // Real-time Speech Recognition Integration
     let isListening = false;
-    let recognition = null;
+    let activeRecognition = null;
 
-    if (typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) {
+    const stopListening = () => {
+      isListening = false;
+      btnMic.style.color = '';
+      btnMic.style.background = '';
+      btnMic.style.boxShadow = '';
+      if (activeRecognition) {
+        try { activeRecognition.stop(); } catch (e) {}
+      }
+    };
+
+    const startListening = () => {
+      if (typeof window === 'undefined' || (!('SpeechRecognition' in window) && !('webkitSpeechRecognition' in window))) {
+        alert('Speech recognition requires Google Chrome or Microsoft Edge with microphone enabled.');
+        return;
+      }
+
+      // Stop previous instance cleanly
+      if (activeRecognition) {
+        try { activeRecognition.abort(); } catch (e) {}
+        activeRecognition = null;
+      }
+
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      recognition = new SpeechRecognition();
-      recognition.continuous = false;
-      recognition.interimResults = true;
-      recognition.lang = 'en-IN';
+      const rec = new SpeechRecognition();
+      activeRecognition = rec;
 
-      recognition.onstart = () => {
+      rec.continuous = false;
+      rec.interimResults = true;
+      rec.maxAlternatives = 1;
+      // 'en-IN' is ideal for Indian English, Hinglish, and clear English recognition
+      rec.lang = 'en-IN';
+
+      rec.onstart = () => {
         isListening = true;
         btnMic.style.color = '#00e676';
         btnMic.style.background = 'rgba(0, 230, 118, 0.25)';
         btnMic.style.boxShadow = '0 0 14px rgba(0, 230, 118, 0.7)';
-        input.placeholder = '🎙️ Listening... Speak your question now...';
+        input.placeholder = '🎙️ Listening... Speak your question or command now...';
       };
 
-      recognition.onresult = (event) => {
+      rec.onresult = (event) => {
         let transcript = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
+        for (let i = 0; i < event.results.length; i++) {
           transcript += event.results[i][0].transcript;
         }
-        if (transcript) {
-          input.value = transcript;
+        if (transcript.trim()) {
+          input.value = transcript.trim();
         }
       };
 
-      recognition.onerror = (err) => {
+      rec.onerror = (err) => {
         isListening = false;
         btnMic.style.color = '';
         btnMic.style.background = '';
         btnMic.style.boxShadow = '';
-        input.placeholder = 'Message MITRA or attach an image...';
         console.warn('[MITRA Mic] Speech recognition notice:', err?.error);
         if (err && err.error === 'not-allowed') {
-          alert('Microphone access is blocked. Please click the Lock icon in your browser address bar and set Microphone to Allow.');
+          input.placeholder = '⚠️ Mic access denied. Please click Lock 🔒 in address bar and Allow Mic.';
+          alert('Microphone access is blocked in your browser.\n\nTo enable:\n1. Click the Lock/Tune icon (🔒) on the left side of the address bar (http://localhost:8080/)\n2. Set "Microphone" to "Allow"\n3. Refresh the page and try again!');
+        } else if (err && err.error === 'no-speech') {
+          input.placeholder = '🎙️ No speech detected. Click 🎙️ to try again.';
+        } else if (err && err.error === 'network') {
+          input.placeholder = '⚠️ Speech recognition network unavailable.';
+        } else {
+          input.placeholder = 'Message MITRA or attach an image...';
         }
+        setTimeout(() => {
+          if (!isListening) {
+            input.placeholder = 'Message MITRA or attach an image...';
+          }
+        }, 4000);
       };
 
-      recognition.onend = () => {
+      rec.onend = () => {
         isListening = false;
         btnMic.style.color = '';
         btnMic.style.background = '';
         btnMic.style.boxShadow = '';
-        input.placeholder = 'Message MITRA or attach an image...';
+        setTimeout(() => {
+          if (!isListening && input.placeholder.includes('Listening')) {
+            input.placeholder = 'Message MITRA or attach an image...';
+          }
+        }, 1200);
         if (input.value.trim()) {
           triggerSend(true);
         }
       };
-    }
+
+      try {
+        input.placeholder = '🎙️ Starting microphone...';
+        rec.start();
+      } catch (err) {
+        console.warn('[MITRA Mic] Recognition start notice:', err);
+      }
+    };
 
     btnMic.addEventListener('click', (e) => {
       e.preventDefault();
       unlockAudio();
-      if (!recognition) {
-        alert('Speech recognition requires Google Chrome or Microsoft Edge with microphone enabled.');
-        return;
-      }
       if (isListening) {
-        try { recognition.stop(); } catch (err) {}
+        stopListening();
       } else {
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-          navigator.mediaDevices.getUserMedia({ audio: true })
-            .then((stream) => {
-              stream.getTracks().forEach(t => t.stop());
-              try { recognition.start(); } catch (err) {
-                recognition.stop();
-                setTimeout(() => { try { recognition.start(); } catch (e2) {} }, 150);
-              }
-            })
-            .catch((permErr) => {
-              console.warn('[MITRA Mic] Permission error:', permErr);
-              alert('Microphone permission required. Please click the Lock icon in your address bar to Allow Microphone.');
-            });
-        } else {
-          try { recognition.start(); } catch (err) {}
-        }
+        startListening();
       }
     });
   }

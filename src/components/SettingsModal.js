@@ -1,28 +1,112 @@
 import { controlPlane, getApiBaseUrl } from '../services/controlPlane.js';
 
-export function applyTheme(themeName) {
+export function applyTheme(themeName, customConfig = null) {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
   if (!root) return;
-  if (themeName === 'Emerald') {
-    root.style.setProperty('--mitra-accent', '#00e676');
-    root.style.setProperty('--mitra-bg', 'rgba(10, 25, 19, 0.92)');
-    if (document.body) document.body.style.background = '#06140E';
+
+  let bg = 'linear-gradient(160deg, #141418 0%, #1a1a24 100%)';
+  let accent = '#6c5ce7';
+  let accentGlow = 'rgba(108, 92, 231, 0.5)';
+  let text = '#ffffff';
+  let textMuted = 'rgba(255, 255, 255, 0.6)';
+  let bodyBg = '#0B0B0E';
+
+  // Load custom configuration if saved
+  if (!customConfig && themeName === 'Custom') {
+    try {
+      const savedConfig = localStorage.getItem('mitra_custom_theme_config');
+      if (savedConfig) customConfig = JSON.parse(savedConfig);
+    } catch (e) {}
+  }
+
+  if (themeName === 'Custom' && customConfig) {
+    bg = customConfig.background || bg;
+    accent = customConfig.accent || accent;
+    accentGlow = customConfig.accentGlow || 'rgba(108, 92, 231, 0.4)';
+    text = customConfig.textColor || text;
+  } else if (themeName === 'Emerald') {
+    bg = 'linear-gradient(160deg, #071710 0%, #0d281e 100%)';
+    accent = '#00e676';
+    accentGlow = 'rgba(0, 230, 118, 0.4)';
+    bodyBg = '#06140E';
   } else if (themeName === 'Violet') {
-    root.style.setProperty('--mitra-accent', '#e056fd');
-    root.style.setProperty('--mitra-bg', 'rgba(20, 10, 26, 0.92)');
-    if (document.body) document.body.style.background = '#0F0614';
+    bg = 'linear-gradient(160deg, #150a22 0%, #26113b 100%)';
+    accent = '#e056fd';
+    accentGlow = 'rgba(224, 86, 253, 0.4)';
+    bodyBg = '#0F0614';
+  } else if (themeName === 'Cyberpunk') {
+    bg = 'linear-gradient(160deg, #090e17 0%, #131d2e 60%, #1d122b 100%)';
+    accent = '#00f2fe';
+    accentGlow = 'rgba(0, 242, 254, 0.5)';
+    bodyBg = '#090e17';
+  } else if (themeName === 'Sunset') {
+    bg = 'linear-gradient(160deg, #1e0b14 0%, #3a1324 100%)';
+    accent = '#ff7675';
+    accentGlow = 'rgba(255, 118, 117, 0.5)';
+    bodyBg = '#1e0b14';
+  } else if (themeName === 'Ocean') {
+    bg = 'linear-gradient(160deg, #071324 0%, #0d2847 100%)';
+    accent = '#0984e3';
+    accentGlow = 'rgba(9, 132, 227, 0.5)';
+    bodyBg = '#071324';
   } else if (themeName === 'Light') {
-    root.style.setProperty('--mitra-accent', '#6c5ce7');
-    root.style.setProperty('--mitra-bg', 'rgba(255, 255, 255, 0.95)');
-    root.style.setProperty('--mitra-text', '#18181b');
-    if (document.body) document.body.style.background = '#F4F4F5';
+    bg = 'linear-gradient(160deg, #fbfbfd 0%, #f0f0f5 100%)';
+    accent = '#6c5ce7';
+    accentGlow = 'rgba(108, 92, 231, 0.3)';
+    text = '#18181b';
+    textMuted = '#666675';
+    bodyBg = '#F4F4F5';
   } else {
     // Midnight (Default)
-    root.style.setProperty('--mitra-accent', '#6c5ce7');
-    root.style.setProperty('--mitra-bg', 'rgba(20, 20, 24, 0.85)');
-    root.style.setProperty('--mitra-text', '#ffffff');
-    if (document.body) document.body.style.background = '#0B0B0E';
+    bg = 'linear-gradient(160deg, #141418 0%, #1a1a24 100%)';
+    accent = '#6c5ce7';
+    accentGlow = 'rgba(108, 92, 231, 0.5)';
+    bodyBg = '#0B0B0E';
+  }
+
+  root.style.setProperty('--mitra-accent', accent);
+  root.style.setProperty('--mitra-accent-glow', accentGlow);
+  root.style.setProperty('--mitra-bg', bg);
+  root.style.setProperty('--mitra-window-bg', bg);
+  root.style.setProperty('--mitra-text', text);
+  root.style.setProperty('--mitra-text-muted', textMuted);
+  if (document.body) document.body.style.background = bodyBg;
+
+  // Persist settings
+  try {
+    localStorage.setItem('mitra_theme', themeName);
+    localStorage.setItem('mitra_chat_bg', bg);
+    localStorage.setItem('mitra_accent', accent);
+    if (customConfig) {
+      localStorage.setItem('mitra_custom_theme_config', JSON.stringify(customConfig));
+    }
+  } catch (e) {}
+
+  // Apply directly to all floating chatbot windows (DOM & Shadow DOM)
+  const applyToWindows = (scope) => {
+    if (!scope) return;
+    const wins = scope.querySelectorAll ? scope.querySelectorAll('.mitra-window') : [];
+    wins.forEach(w => {
+      w.style.setProperty('background', bg, 'important');
+      w.style.setProperty('--mitra-accent', accent);
+      w.style.setProperty('color', text);
+    });
+  };
+
+  applyToWindows(document);
+  if (typeof document !== 'undefined') {
+    const companions = document.querySelectorAll('mitra-companion');
+    companions.forEach(c => {
+      if (c && c.shadowRoot) applyToWindows(c.shadowRoot);
+    });
+  }
+
+  // Dispatch live notification for any listening components
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('mitra:background-changed', {
+      detail: { theme: themeName, background: bg, accent, text }
+    }));
   }
 }
 
@@ -296,15 +380,135 @@ export class SettingsModal {
           </div>
         </div>
 
-        <!-- 4. APPEARANCE -->
-        <div>
-          <div style="font-size:11px; font-weight:700; color:rgba(255,255,255,0.5); letter-spacing:0.5px; margin-bottom:10px;">🎨 APPEARANCE</div>
-          <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;">
-            <button class="theme-opt ${activeTheme === 'Midnight' ? 'active' : ''}" data-theme="Midnight" style="background:${activeTheme === 'Midnight' ? '#6C5CE7' : 'rgba(255,255,255,0.05)'}; border:1px solid rgba(255,255,255,0.1); color:#fff; padding:8px; border-radius:8px; font-size:12px; cursor:pointer;">🌙 Midnight</button>
-            <button class="theme-opt ${activeTheme === 'Emerald' ? 'active' : ''}" data-theme="Emerald" style="background:${activeTheme === 'Emerald' ? '#00e676' : 'rgba(255,255,255,0.05)'}; border:1px solid rgba(255,255,255,0.1); color:#fff; padding:8px; border-radius:8px; font-size:12px; cursor:pointer;">❇️ Emerald</button>
-            <button class="theme-opt ${activeTheme === 'Violet' ? 'active' : ''}" data-theme="Violet" style="background:${activeTheme === 'Violet' ? '#e056fd' : 'rgba(255,255,255,0.05)'}; border:1px solid rgba(255,255,255,0.1); color:#fff; padding:8px; border-radius:8px; font-size:12px; cursor:pointer;">🔮 Violet</button>
-            <button class="theme-opt ${activeTheme === 'Light' ? 'active' : ''}" data-theme="Light" style="background:${activeTheme === 'Light' ? '#ffb900' : 'rgba(255,255,255,0.05)'}; border:1px solid rgba(255,255,255,0.1); color:#fff; padding:8px; border-radius:8px; font-size:12px; cursor:pointer;">☀️ Light</button>
-            <button class="theme-opt ${activeTheme === 'System' ? 'active' : ''}" data-theme="System" style="background:${activeTheme === 'System' ? '#a29bfe' : 'rgba(255,255,255,0.05)'}; border:1px solid rgba(255,255,255,0.1); color:#fff; padding:8px; border-radius:8px; font-size:12px; cursor:pointer;">💻 System</button>
+        <!-- 4. CHATBOT BACKGROUND & APPEARANCE CUSTOMIZER -->
+        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:16px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+            <div>
+              <div style="font-size:13px; font-weight:700; color:#fff; display:flex; align-items:center; gap:6px;">
+                <span>🎨</span> Chatbot Background &amp; Themes
+              </div>
+              <div style="font-size:11px; color:rgba(255,255,255,0.5); margin-top:2px;">
+                Customize colors, gradients, and custom wallpaper for the floating chatbot window
+              </div>
+            </div>
+            <button id="btn-toggle-custom-bg" style="background:rgba(108,92,231,0.2); border:1px solid #6C5CE7; color:#a29bfe; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer;">
+              ✏️ Customize
+            </button>
+          </div>
+
+          <!-- Preset Themes Grid -->
+          <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; margin-bottom:10px;">
+            <button class="theme-opt ${activeTheme === 'Midnight' ? 'active' : ''}" data-theme="Midnight" style="background:${activeTheme === 'Midnight' ? '#6C5CE7' : 'rgba(255,255,255,0.05)'}; border:1px solid rgba(255,255,255,0.12); color:#fff; padding:8px 4px; border-radius:8px; font-size:11px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px;">
+              <span style="width:20px; height:20px; border-radius:50%; background:#141418; border:2px solid #6c5ce7; display:inline-block;"></span>
+              <span>Midnight</span>
+            </button>
+            <button class="theme-opt ${activeTheme === 'Emerald' ? 'active' : ''}" data-theme="Emerald" style="background:${activeTheme === 'Emerald' ? '#00e676' : 'rgba(255,255,255,0.05)'}; border:1px solid rgba(255,255,255,0.12); color:#fff; padding:8px 4px; border-radius:8px; font-size:11px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px;">
+              <span style="width:20px; height:20px; border-radius:50%; background:linear-gradient(135deg, #071710, #0d281e); border:2px solid #00e676; display:inline-block;"></span>
+              <span>Emerald</span>
+            </button>
+            <button class="theme-opt ${activeTheme === 'Violet' ? 'active' : ''}" data-theme="Violet" style="background:${activeTheme === 'Violet' ? '#e056fd' : 'rgba(255,255,255,0.05)'}; border:1px solid rgba(255,255,255,0.12); color:#fff; padding:8px 4px; border-radius:8px; font-size:11px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px;">
+              <span style="width:20px; height:20px; border-radius:50%; background:linear-gradient(135deg, #150a22, #26113b); border:2px solid #e056fd; display:inline-block;"></span>
+              <span>Violet</span>
+            </button>
+            <button class="theme-opt ${activeTheme === 'Cyberpunk' ? 'active' : ''}" data-theme="Cyberpunk" style="background:${activeTheme === 'Cyberpunk' ? '#00f2fe' : 'rgba(255,255,255,0.05)'}; border:1px solid rgba(255,255,255,0.12); color:${activeTheme === 'Cyberpunk' ? '#000' : '#fff'}; padding:8px 4px; border-radius:8px; font-size:11px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px;">
+              <span style="width:20px; height:20px; border-radius:50%; background:linear-gradient(135deg, #090e17, #1d122b); border:2px solid #00f2fe; display:inline-block;"></span>
+              <span>Cyberpunk</span>
+            </button>
+            <button class="theme-opt ${activeTheme === 'Sunset' ? 'active' : ''}" data-theme="Sunset" style="background:${activeTheme === 'Sunset' ? '#ff7675' : 'rgba(255,255,255,0.05)'}; border:1px solid rgba(255,255,255,0.12); color:#fff; padding:8px 4px; border-radius:8px; font-size:11px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px;">
+              <span style="width:20px; height:20px; border-radius:50%; background:linear-gradient(135deg, #1e0b14, #3a1324); border:2px solid #ff7675; display:inline-block;"></span>
+              <span>Sunset</span>
+            </button>
+            <button class="theme-opt ${activeTheme === 'Ocean' ? 'active' : ''}" data-theme="Ocean" style="background:${activeTheme === 'Ocean' ? '#0984e3' : 'rgba(255,255,255,0.05)'}; border:1px solid rgba(255,255,255,0.12); color:#fff; padding:8px 4px; border-radius:8px; font-size:11px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px;">
+              <span style="width:20px; height:20px; border-radius:50%; background:linear-gradient(135deg, #071324, #0d2847); border:2px solid #0984e3; display:inline-block;"></span>
+              <span>Ocean</span>
+            </button>
+            <button class="theme-opt ${activeTheme === 'Light' ? 'active' : ''}" data-theme="Light" style="background:${activeTheme === 'Light' ? '#f0f0f5' : 'rgba(255,255,255,0.05)'}; border:1px solid rgba(255,255,255,0.12); color:${activeTheme === 'Light' ? '#000' : '#fff'}; padding:8px 4px; border-radius:8px; font-size:11px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px;">
+              <span style="width:20px; height:20px; border-radius:50%; background:#ffffff; border:2px solid #6c5ce7; display:inline-block;"></span>
+              <span>Light</span>
+            </button>
+            <button class="theme-opt ${activeTheme === 'Custom' ? 'active' : ''}" data-theme="Custom" id="btn-theme-custom-card" style="background:${activeTheme === 'Custom' ? '#ff007f' : 'rgba(255,255,255,0.05)'}; border:1px dashed rgba(255,255,255,0.3); color:#fff; padding:8px 4px; border-radius:8px; font-size:11px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px;">
+              <span style="width:20px; height:20px; border-radius:50%; background:conic-gradient(red, yellow, lime, aqua, blue, magenta, red); display:inline-block;"></span>
+              <span>Custom ✨</span>
+            </button>
+          </div>
+
+          <!-- User Custom Background Creator Panel -->
+          <div id="panel-custom-theme" style="display:${activeTheme === 'Custom' ? 'block' : 'none'}; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px; margin-top:8px;">
+            <div style="font-size:11px; font-weight:700; color:#a29bfe; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between;">
+              <span>🛠️ CUSTOM BACKGROUND CREATOR</span>
+              <span style="font-size:10px; color:rgba(255,255,255,0.4);">Live Chat Window Preview</span>
+            </div>
+
+            <!-- Mode Tabs: Solid vs Gradient vs Wallpaper -->
+            <div style="display:flex; gap:6px; margin-bottom:10px;">
+              <button id="tab-custom-solid" type="button" class="custom-bg-tab active" style="flex:1; background:rgba(108,92,231,0.25); border:1px solid #6C5CE7; color:#fff; padding:5px; border-radius:6px; font-size:10px; font-weight:600; cursor:pointer;">Solid Color</button>
+              <button id="tab-custom-gradient" type="button" class="custom-bg-tab" style="flex:1; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:rgba(255,255,255,0.7); padding:5px; border-radius:6px; font-size:10px; font-weight:600; cursor:pointer;">Gradient</button>
+              <button id="tab-custom-wallpaper" type="button" class="custom-bg-tab" style="flex:1; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:rgba(255,255,255,0.7); padding:5px; border-radius:6px; font-size:10px; font-weight:600; cursor:pointer;">Wallpaper</button>
+            </div>
+
+            <!-- Solid Color Controls -->
+            <div id="section-custom-solid" style="display:flex; flex-direction:column; gap:8px;">
+              <div style="display:flex; align-items:center; justify-content:space-between;">
+                <label style="font-size:11px; color:rgba(255,255,255,0.7);">Window Color:</label>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <input type="color" id="input-solid-color" value="#14141c" style="width:34px; height:26px; border:none; border-radius:4px; background:none; cursor:pointer;" />
+                  <span id="label-solid-color" style="font-family:monospace; font-size:11px; color:#fff;">#14141c</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Gradient Controls -->
+            <div id="section-custom-gradient" style="display:none; flex-direction:column; gap:8px;">
+              <div style="display:flex; align-items:center; justify-content:space-between;">
+                <label style="font-size:11px; color:rgba(255,255,255,0.7);">Color 1 (Start):</label>
+                <input type="color" id="input-grad-color1" value="#120c24" style="width:34px; height:26px; border:none; border-radius:4px; background:none; cursor:pointer;" />
+              </div>
+              <div style="display:flex; align-items:center; justify-content:space-between;">
+                <label style="font-size:11px; color:rgba(255,255,255,0.7);">Color 2 (End):</label>
+                <input type="color" id="input-grad-color2" value="#221138" style="width:34px; height:26px; border:none; border-radius:4px; background:none; cursor:pointer;" />
+              </div>
+              <div style="display:flex; align-items:center; justify-content:space-between;">
+                <label style="font-size:11px; color:rgba(255,255,255,0.7);">Direction:</label>
+                <select id="select-grad-angle" style="background:#1e1e28; border:1px solid rgba(255,255,255,0.15); color:#fff; padding:3px 6px; border-radius:4px; font-size:10px;">
+                  <option value="135deg">135° Diagonal</option>
+                  <option value="180deg">180° Vertical</option>
+                  <option value="90deg">90° Horizontal</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Wallpaper / Image Controls -->
+            <div id="section-custom-wallpaper" style="display:none; flex-direction:column; gap:6px;">
+              <div style="font-size:11px; color:rgba(255,255,255,0.7);">Upload Custom Background Image:</div>
+              <input type="file" id="input-bg-file" accept="image/*" style="font-size:11px; color:rgba(255,255,255,0.6);" />
+              <div style="font-size:10px; color:rgba(255,255,255,0.4);">Auto dark tint overlay applied for crystal clear text readability.</div>
+              <div id="wallpaper-preview-thumb" style="display:none; width:100%; height:40px; border-radius:6px; background-size:cover; background-position:center; border:1px solid rgba(255,255,255,0.2);"></div>
+            </div>
+
+            <!-- Accent Color Picker -->
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.06);">
+              <label style="font-size:11px; color:rgba(255,255,255,0.7);">Accent / Button Glow Color:</label>
+              <input type="color" id="input-custom-accent" value="#6C5CE7" style="width:34px; height:26px; border:none; border-radius:4px; background:none; cursor:pointer;" />
+            </div>
+
+            <!-- Live Chat Preview Box -->
+            <div id="custom-live-preview-box" style="margin-top:10px; padding:10px; border-radius:8px; border:1px solid rgba(255,255,255,0.15); background:#141418; display:flex; align-items:center; justify-content:space-between;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span id="preview-mini-orb" style="width:12px; height:12px; border-radius:50%; background:#6c5ce7; box-shadow:0 0 8px #6c5ce7;"></span>
+                <span style="font-size:11px; font-weight:600; color:#fff;">Floating Window Live Preview</span>
+              </div>
+              <span id="preview-badge-status" style="font-size:10px; color:#00e676; font-weight:600;">Active</span>
+            </div>
+
+            <!-- Action Buttons -->
+            <div style="display:flex; gap:8px; margin-top:10px;">
+              <button id="btn-apply-custom-theme" type="button" style="flex:1; background:#6C5CE7; border:none; color:#fff; padding:6px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;">
+                ✓ Apply Custom Background
+              </button>
+              <button id="btn-reset-theme" type="button" style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); color:rgba(255,255,255,0.8); padding:6px 10px; border-radius:6px; font-size:11px; cursor:pointer;">
+                ↺ Reset
+              </button>
+            </div>
           </div>
         </div>
 
@@ -366,6 +570,22 @@ export class SettingsModal {
     this.element.querySelector('#btn-close-settings').addEventListener('click', () => this.close());
     this.element.querySelector('#btn-close-settings-footer').addEventListener('click', () => this.close());
 
+    // Close on clicking backdrop outside modal card
+    this.element.addEventListener('click', (e) => {
+      if (e.target === this.element) {
+        this.close();
+      }
+    });
+
+    // Close on Escape key
+    if (typeof window !== 'undefined') {
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && this.element.style.display !== 'none') {
+          this.close();
+        }
+      });
+    }
+
     // Connect Google button click
     const connectGoogleBtn = this.element.querySelector('#btn-connect-google');
     if (connectGoogleBtn) {
@@ -416,16 +636,231 @@ export class SettingsModal {
       }
     });
 
+    // ── Chatbot Background & Appearance Logic ──
     const themeOpts = this.element.querySelectorAll('.theme-opt');
+    const panelCustom = this.element.querySelector('#panel-custom-theme');
+    const btnToggleCustom = this.element.querySelector('#btn-toggle-custom-bg');
+
+    // Customizer input elements
+    const tabSolid = this.element.querySelector('#tab-custom-solid');
+    const tabGrad = this.element.querySelector('#tab-custom-gradient');
+    const tabWall = this.element.querySelector('#tab-custom-wallpaper');
+    const secSolid = this.element.querySelector('#section-custom-solid');
+    const secGrad = this.element.querySelector('#section-custom-gradient');
+    const secWall = this.element.querySelector('#section-custom-wallpaper');
+
+    const inputSolid = this.element.querySelector('#input-solid-color');
+    const labelSolid = this.element.querySelector('#label-solid-color');
+    const inputGrad1 = this.element.querySelector('#input-grad-color1');
+    const inputGrad2 = this.element.querySelector('#input-grad-color2');
+    const selectAngle = this.element.querySelector('#select-grad-angle');
+    const inputBgFile = this.element.querySelector('#input-bg-file');
+    const wallThumb = this.element.querySelector('#wallpaper-preview-thumb');
+    const inputAccent = this.element.querySelector('#input-custom-accent');
+    const previewBox = this.element.querySelector('#custom-live-preview-box');
+    const previewOrb = this.element.querySelector('#preview-mini-orb');
+    const btnApplyCustom = this.element.querySelector('#btn-apply-custom-theme');
+    const btnReset = this.element.querySelector('#btn-reset-theme');
+
+    let currentCustomMode = 'solid'; // 'solid' | 'gradient' | 'wallpaper'
+    let customUploadedBg = null;
+
+    // Load any existing custom config
+    try {
+      const savedConfig = localStorage.getItem('mitra_custom_theme_config');
+      if (savedConfig) {
+        const parsed = JSON.parse(savedConfig);
+        if (parsed.accent && inputAccent) inputAccent.value = parsed.accent;
+        if (parsed.mode === 'gradient' && parsed.grad1 && parsed.grad2) {
+          if (inputGrad1) inputGrad1.value = parsed.grad1;
+          if (inputGrad2) inputGrad2.value = parsed.grad2;
+        } else if (parsed.mode === 'wallpaper' && parsed.imageUrl) {
+          customUploadedBg = parsed.imageUrl;
+          if (wallThumb) {
+            wallThumb.style.display = 'block';
+            wallThumb.style.backgroundImage = `url(${customUploadedBg})`;
+          }
+        } else if (parsed.solidColor && inputSolid) {
+          inputSolid.value = parsed.solidColor;
+          if (labelSolid) labelSolid.textContent = parsed.solidColor;
+        }
+      }
+    } catch (e) {}
+
+    const updateLivePreview = () => {
+      let bgValue = '#14141c';
+      if (currentCustomMode === 'solid') {
+        bgValue = inputSolid ? inputSolid.value : '#14141c';
+        if (labelSolid) labelSolid.textContent = bgValue;
+      } else if (currentCustomMode === 'gradient') {
+        const c1 = inputGrad1 ? inputGrad1.value : '#120c24';
+        const c2 = inputGrad2 ? inputGrad2.value : '#221138';
+        const ang = selectAngle ? selectAngle.value : '135deg';
+        bgValue = `linear-gradient(${ang}, ${c1}, ${c2})`;
+      } else if (currentCustomMode === 'wallpaper' && customUploadedBg) {
+        bgValue = `linear-gradient(rgba(18,18,24,0.78), rgba(18,18,24,0.88)), url(${customUploadedBg}) center/cover no-repeat`;
+      }
+      if (previewBox) previewBox.style.background = bgValue;
+      const accColor = inputAccent ? inputAccent.value : '#6C5CE7';
+      if (previewOrb) {
+        previewOrb.style.background = accColor;
+        previewOrb.style.boxShadow = `0 0 8px ${accColor}`;
+      }
+      return { bgValue, accColor };
+    };
+
+    // Mode Tab switching
+    const setCustomTab = (mode) => {
+      currentCustomMode = mode;
+      const tabs = [tabSolid, tabGrad, tabWall];
+      const secs = [secSolid, secGrad, secWall];
+      tabs.forEach(t => {
+        if (t) {
+          t.style.background = 'rgba(255,255,255,0.05)';
+          t.style.borderColor = 'rgba(255,255,255,0.1)';
+          t.style.color = 'rgba(255,255,255,0.7)';
+        }
+      });
+      secs.forEach(s => { if (s) s.style.display = 'none'; });
+
+      if (mode === 'solid') {
+        if (tabSolid) {
+          tabSolid.style.background = 'rgba(108,92,231,0.25)';
+          tabSolid.style.borderColor = '#6C5CE7';
+          tabSolid.style.color = '#fff';
+        }
+        if (secSolid) secSolid.style.display = 'flex';
+      } else if (mode === 'gradient') {
+        if (tabGrad) {
+          tabGrad.style.background = 'rgba(108,92,231,0.25)';
+          tabGrad.style.borderColor = '#6C5CE7';
+          tabGrad.style.color = '#fff';
+        }
+        if (secGrad) secGrad.style.display = 'flex';
+      } else if (mode === 'wallpaper') {
+        if (tabWall) {
+          tabWall.style.background = 'rgba(108,92,231,0.25)';
+          tabWall.style.borderColor = '#6C5CE7';
+          tabWall.style.color = '#fff';
+        }
+        if (secWall) secWall.style.display = 'flex';
+      }
+      updateLivePreview();
+    };
+
+    if (tabSolid) tabSolid.addEventListener('click', () => setCustomTab('solid'));
+    if (tabGrad) tabGrad.addEventListener('click', () => setCustomTab('gradient'));
+    if (tabWall) tabWall.addEventListener('click', () => setCustomTab('wallpaper'));
+
+    // Live inputs listeners
+    if (inputSolid) inputSolid.addEventListener('input', updateLivePreview);
+    if (inputGrad1) inputGrad1.addEventListener('input', updateLivePreview);
+    if (inputGrad2) inputGrad2.addEventListener('input', updateLivePreview);
+    if (selectAngle) selectAngle.addEventListener('change', updateLivePreview);
+    if (inputAccent) inputAccent.addEventListener('input', updateLivePreview);
+
+    // Wallpaper file input
+    if (inputBgFile) {
+      inputBgFile.addEventListener('change', (e) => {
+        const file = e.target.files?.[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (loadEvt) => {
+            customUploadedBg = loadEvt.target.result;
+            if (wallThumb) {
+              wallThumb.style.display = 'block';
+              wallThumb.style.backgroundImage = `url(${customUploadedBg})`;
+            }
+            updateLivePreview();
+          };
+          reader.readAsDataURL(file);
+        }
+      });
+    }
+
+    // Toggle Customizer Panel button
+    if (btnToggleCustom) {
+      btnToggleCustom.addEventListener('click', () => {
+        if (panelCustom) {
+          const isOpen = panelCustom.style.display !== 'none';
+          panelCustom.style.display = isOpen ? 'none' : 'block';
+          btnToggleCustom.textContent = isOpen ? '✏️ Customize' : '✕ Close Creator';
+          if (!isOpen) updateLivePreview();
+        }
+      });
+    }
+
+    // Preset cards click handler
     themeOpts.forEach(btn => {
       btn.addEventListener('click', (e) => {
-        const theme = e.target.getAttribute('data-theme');
-        localStorage.setItem('mitra_theme', theme);
-        applyTheme(theme);
-        themeOpts.forEach(b => b.style.background = 'rgba(255,255,255,0.05)');
-        e.target.style.background = '#6C5CE7';
+        const card = e.currentTarget || e.target.closest('.theme-opt');
+        if (!card) return;
+        const theme = card.getAttribute('data-theme');
+
+        themeOpts.forEach(b => {
+          b.style.background = 'rgba(255,255,255,0.05)';
+          b.style.borderColor = 'rgba(255,255,255,0.12)';
+          b.style.color = '#fff';
+        });
+
+        if (theme === 'Custom') {
+          card.style.background = '#ff007f';
+          if (panelCustom) panelCustom.style.display = 'block';
+          if (btnToggleCustom) btnToggleCustom.textContent = '✕ Close Creator';
+          updateLivePreview();
+        } else {
+          card.style.background = '#6C5CE7';
+          if (theme === 'Light') card.style.color = '#000';
+          localStorage.setItem('mitra_theme', theme);
+          applyTheme(theme);
+        }
       });
     });
+
+    // Apply Custom Theme button
+    if (btnApplyCustom) {
+      btnApplyCustom.addEventListener('click', () => {
+        const { bgValue, accColor } = updateLivePreview();
+        const config = {
+          mode: currentCustomMode,
+          background: bgValue,
+          accent: accColor,
+          solidColor: inputSolid?.value,
+          grad1: inputGrad1?.value,
+          grad2: inputGrad2?.value,
+          angle: selectAngle?.value,
+          imageUrl: customUploadedBg
+        };
+        applyTheme('Custom', config);
+        themeOpts.forEach(b => {
+          if (b.getAttribute('data-theme') === 'Custom') {
+            b.style.background = '#ff007f';
+          } else {
+            b.style.background = 'rgba(255,255,255,0.05)';
+          }
+        });
+        alert('🎉 Custom chatbot background and theme applied successfully!');
+      });
+    }
+
+    // Reset Theme button
+    if (btnReset) {
+      btnReset.addEventListener('click', () => {
+        try {
+          localStorage.removeItem('mitra_custom_theme_config');
+          localStorage.setItem('mitra_theme', 'Midnight');
+          localStorage.setItem('mitra_chat_bg', 'linear-gradient(160deg, #141418 0%, #1a1a24 100%)');
+          localStorage.setItem('mitra_accent', '#6c5ce7');
+        } catch (e) {}
+        applyTheme('Midnight');
+        themeOpts.forEach(b => {
+          b.style.background = b.getAttribute('data-theme') === 'Midnight' ? '#6C5CE7' : 'rgba(255,255,255,0.05)';
+        });
+        if (panelCustom) panelCustom.style.display = 'none';
+        if (btnToggleCustom) btnToggleCustom.textContent = '✏️ Customize';
+        alert('Theme reset to Midnight default.');
+      });
+    }
 
     // ── WhatsApp Web Automation Quick Launcher ──
     const btnOpenWa = this.element.querySelector('#btn-open-wa-automation');

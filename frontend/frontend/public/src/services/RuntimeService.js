@@ -103,7 +103,10 @@ export class RuntimeService {
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
       const userId = this.context.getUserId() || 'anonymous';
-      const res = await fetch(`${getApiBaseUrl()}/api/pages/reminders/list?user_id=${encodeURIComponent(userId)}`, { headers });
+      const res = await fetch(`${getApiBaseUrl()}/api/pages/reminders/list?user_id=${encodeURIComponent(userId)}`, { 
+        headers,
+        signal: AbortSignal.timeout(4000)
+      });
       if (!res.ok) return;
 
       const data = await res.json();
@@ -156,7 +159,10 @@ export class RuntimeService {
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
       const userId = this.context.getUserId() || 'anonymous';
-      const res = await fetch(`${getApiBaseUrl()}/api/pages/reminders/list?user_id=${encodeURIComponent(userId)}`, { headers });
+      const res = await fetch(`${getApiBaseUrl()}/api/pages/reminders/list?user_id=${encodeURIComponent(userId)}`, { 
+        headers,
+        signal: AbortSignal.timeout(4000)
+      });
       if (!res.ok) return;
 
       const data = await res.json();
@@ -369,8 +375,7 @@ export class RuntimeService {
 
         // Capabilities that emit their own chat bubbles via notification.received in controlPlane:
         // summarize, analyze, translate — don't add a duplicate generic capability card.
-        // reminder, ocr — same reason.
-        const selfReportingCapabilities = new Set(['summarize', 'analyze', 'translate', 'ocr']);
+        const selfReportingCapabilities = new Set(['summarize', 'analyze', 'translate']);
 
         if (!selfReportingCapabilities.has(capabilityName)) {
           eventBus.emit('capability.completed', {

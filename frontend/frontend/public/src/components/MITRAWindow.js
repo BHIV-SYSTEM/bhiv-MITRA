@@ -7,6 +7,7 @@ import { ActivityIndicator } from './ActivityIndicator.js';
 import { SettingsModal } from './SettingsModal.js';
 import { renderAvatarElement, getActiveMitraAvatar } from '../services/avatarHelper.js';
 import { contextStore } from '../services/contextStore.js';
+import { controlPlane } from '../services/controlPlane.js';
 
 export class MITRAWindow {
   constructor(runtimeService, eventBus, dockController) {
@@ -77,13 +78,30 @@ export class MITRAWindow {
     if (typeof window !== 'undefined') {
       window.__mitra_open_whatsapp = () => this.openWhatsAppModal();
       window.__mitra_open_settings = () => this.openSettingsModal();
+      window.__mitra_close_launcher = () => { if (this.launcher) this.launcher.close(); };
       if (!window.__MITRA_WHATSAPP_WEB__) {
         window.__MITRA_WHATSAPP_WEB__ = () => this.openWhatsAppModal();
       }
     }
 
     // Initial and dynamic avatar updates
-    const initialAvatar = getActiveMitraAvatar(contextStore);
+    
+    // Live Chatbot Background & Theme synchronizer
+    const syncActiveChatBackground = () => {
+      try {
+        const bg = (typeof localStorage !== 'undefined' && localStorage.getItem('mitra_chat_bg')) || 'var(--mitra-bg, #141418)';
+        this.element.style.setProperty('background', bg, 'important');
+      } catch (e) {}
+    };
+    syncActiveChatBackground();
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('mitra:background-changed', (e) => {
+        const bg = e.detail?.background || (typeof localStorage !== 'undefined' && localStorage.getItem('mitra_chat_bg')) || 'var(--mitra-bg, #141418)';
+        this.element.style.setProperty('background', bg, 'important');
+      });
+    }
+const initialAvatar = getActiveMitraAvatar(contextStore);
     this.header.updateAvatar(initialAvatar, renderAvatarElement);
 
     this.eventBus.on('avatar.changed', (data) => {
@@ -113,6 +131,34 @@ export class MITRAWindow {
 
     // Listen for click on suggested actions
     this.eventBus.on('chat.send_suggested', (text) => {
+      if (text.includes('Start Voice Input') || text.includes('Start Mic')) {
+        const micBtn = this.footer.element.querySelector('#btn-mic');
+        if (micBtn) micBtn.click();
+        return;
+      }
+      if (text.includes('Open Settings') || text.includes('Settings')) {
+        this.openSettingsModal();
+        return;
+      }
+      if (text.includes('Open WhatsApp') || text.includes('WhatsApp Web')) {
+        this.openWhatsAppModal();
+        return;
+      }
+      if (text.includes('Test AI Voice') || text.includes('Test Voice Output')) {
+        controlPlane.speakText('Hello! MITRA AI Voice synthesis is active and working properly.', true);
+        return;
+      }
+      if (text.includes('Attach an image') || text.includes('Attach a photo')) {
+        const fileInput = this.footer.element.querySelector('#file-input-image');
+        if (fileInput) fileInput.click();
+        return;
+      }
+      if (text.includes('Generate:')) {
+        const prompt = text.replace(/^.*?Generate:\s*/i, '').trim();
+        this.eventBus.emit('user.message_sent', { text: `🎨 [Generate Image] ${prompt}` });
+        this.runtimeService.sendCapabilityRequest('image', 'generate_image', { prompt: prompt });
+        return;
+      }
       if (this.runtimeService) {
         this.runtimeService.sendMessage(text, false);
       }
@@ -143,40 +189,191 @@ export class MITRAWindow {
           return;
         }
 
+        const inputEl = this.footer.element.querySelector('#chat-input');
+        const inputText = inputEl ? inputEl.value.trim() : '';
+
         if (capability === 'voice') {
           const micBtn = this.footer.element.querySelector('#btn-mic');
           if (micBtn) micBtn.click();
+          this.eventBus.emit('chat.mitra_message', {
+            role: 'mitra',
+            text: '🎙️ **MITRA Voice & Audio Assistant Active**\n\nMicrophone is listening! Speak your question or command clearly into your mic:\n\n• "Summarize today\'s schedule"\n• "Plan my day"\n• "Translate Hello into Hindi"\n• "Remind me to drink water in 30 minutes"\n\n*(You can also click the 🔊 icon on any message to hear MITRA speak out loud!)*',
+            intent: 'voice_active',
+            suggestedActions: [
+              '🎙️ Start Voice Input',
+              '🔊 Test AI Voice Speech',
+              '📅 Plan My Day',
+              '📋 Show My Tasks'
+            ]
+          });
+          return;
+        }
+
+        if (capability === 'calendar') {
+          if (inputText) {
+            this.eventBus.emit('user.message_sent', { text: `📅 [Calendar] ${inputText}` });
+            if (inputEl) inputEl.value = '';
+            this.runtimeService.sendMessage(inputText);
+            return;
+          }
+          this.runtimeService.sendCapabilityRequest('calendar', 'list_events', {});
+          return;
+        }
+
+        if (capability === 'translate') {
+          if (inputText) {
+            this.eventBus.emit('user.message_sent', { text: `🌐 [Translate] ${inputText}` });
+            if (inputEl) inputEl.value = '';
+            this.runtimeService.sendMessage(`Translate "${inputText}" into Hindi`);
+            return;
+          }
+          this.eventBus.emit('chat.mitra_message', {
+            role: 'mitra',
+            text: '🌐 **MITRA Multilingual Translator**\n\nType or paste any text in the message box to translate instantly!\n\nOr click a quick action to test:',
+            intent: 'translate_prompt',
+            suggestedActions: [
+              'Translate "Hello, how are you?" into Hindi',
+              'Translate "Good morning, have a great day" into Spanish',
+              'Translate "Thank you very much" into French',
+              'Translate "Welcome to our team" into German',
+              'Translate "How are you doing today?" into Marathi'
+            ]
+          });
           return;
         }
 
         if (capability === 'summarize') {
-          const inputEl = this.footer.element.querySelector('#chat-input');
-          const inputText = inputEl ? inputEl.value.trim() : '';
+          let textToSummarize = inputText;
+          if (!textToSummarize) {
+            const history = (this.runtimeService && this.runtimeService.context) ? this.runtimeService.context.getHistory() : [];
+            const lastMsg = [...history].reverse().find(m => m.text && m.text.length > 25 && !m.text.startsWith('📌') && !m.text.startsWith('I have received'));
+            if (lastMsg) {
+              textToSummarize = lastMsg.text;
+            }
+          }
 
-          if (!inputText) {
+          if (!textToSummarize) {
             this.eventBus.emit('chat.mitra_message', {
               role: 'mitra',
-              text: '📌 To summarize, type or paste your text in the message box below, then click **Summarize** again.\n\nFor example: "Artificial intelligence is transforming many industries..."',
-              intent: 'summarize_prompt'
+              text: '📌 **MITRA AI Summarizer**\n\nTo summarize, please type or paste your text in the message box below, or ask:\n• "Summarize my day"\n• "Summarize this: [paste article/text]"',
+              intent: 'summarize_prompt',
+              suggestedActions: [
+                '📅 Summarize my day',
+                '📰 Summarize latest news'
+              ]
             });
             return;
           }
 
-          this.eventBus.emit('user.message_sent', { text: `📄 [Summarize] ${inputText.substring(0, 60)}${inputText.length > 60 ? '...' : ''}` });
+          this.eventBus.emit('user.message_sent', { text: `📄 [Summarize] ${textToSummarize.substring(0, 60)}${textToSummarize.length > 60 ? '...' : ''}` });
           if (inputEl) inputEl.value = '';
 
-          this.runtimeService.sendCapabilityRequest('summarize', 'summarize_text', { text: inputText });
+          this.runtimeService.sendCapabilityRequest('summarize', 'summarize_text', { text: textToSummarize });
           return;
         }
 
-        if ((capability === 'ocr' || capability === 'image') && !this.footer.getAttachedImage()) {
+        if (capability === 'task') {
+          if (inputText) {
+            this.eventBus.emit('user.message_sent', { text: `📋 [Task] ${inputText}` });
+            if (inputEl) inputEl.value = '';
+            this.runtimeService.sendCapabilityRequest('task', 'create_task', { title: inputText });
+            return;
+          }
+          this.runtimeService.sendCapabilityRequest('task', 'list_tasks', { action: 'list' });
+          return;
+        }
+
+        if (capability === 'reminder') {
+          if (inputText) {
+            this.eventBus.emit('user.message_sent', { text: `⏰ [Reminder] ${inputText}` });
+            if (inputEl) inputEl.value = '';
+            this.runtimeService.sendMessage(`Remind me to ${inputText}`);
+            return;
+          }
           this.eventBus.emit('chat.mitra_message', {
             role: 'mitra',
-            text: '⚠️ Please attach an image first using the 📎 button next to the input bar before running OCR or Image Analysis.',
-            intent: 'validation_error'
+            text: '⏰ **MITRA Reminders & Alarms**\n\nType a reminder with time in the chat box, for example:\n• "Remind me to call client in 30 minutes"\n• "Remind me to review document at 5pm"\n• "Remind me to submit report tomorrow at 10am"',
+            intent: 'reminder_prompt',
+            suggestedActions: [
+              'Remind me to stretch in 15 minutes',
+              'Remind me to drink water in 30 minutes',
+              'Remind me to check tasks in 1 hour'
+            ]
           });
           return;
         }
+
+        if (capability === 'health') {
+          this.runtimeService.sendCapabilityRequest('health', 'check_health', {});
+          return;
+        }
+
+        if (capability === 'email') {
+          if (inputText) {
+            this.eventBus.emit('user.message_sent', { text: `✉️ [Email] ${inputText}` });
+            if (inputEl) inputEl.value = '';
+            this.runtimeService.sendMessage(`Send email: ${inputText}`);
+            return;
+          }
+          this.eventBus.emit('chat.mitra_message', {
+            role: 'mitra',
+            text: '✉️ **MITRA Google Workspace Email**\n\nSend or draft emails directly through chat!\n\nFormat example:\n• "Send email to team@blackholeinfiverse.com subject Sprint Review saying Meeting is at 4pm"',
+            intent: 'email_prompt',
+            suggestedActions: [
+              'Check my unread emails',
+              'Draft email to team about sprint sync'
+            ]
+          });
+          return;
+        }
+
+        if (capability === 'ocr') {
+          const attachedImg = this.footer.getAttachedImage();
+          if (!attachedImg) {
+            this.eventBus.emit('chat.mitra_message', {
+              role: 'mitra',
+              text: '📄 **MITRA Document Scanner & OCR**\n\nTo scan and extract text from an image, document, or bill:\n1. Choose your document using the file picker\n2. Click Send or choose OCR again to extract text instantly!',
+              intent: 'ocr_prompt',
+              suggestedActions: [
+                '📎 Attach an image from device',
+                '📄 What can OCR do?'
+              ]
+            });
+            const fileInput = this.footer.element.querySelector('#file-input-image');
+            if (fileInput) fileInput.click();
+            return;
+          }
+          const reqText = inputText || 'Extract and transcribe all text from attached image';
+          this.runtimeService.sendCapabilityRequest('ocr', 'extract_text', { image_url: attachedImg, prompt: reqText });
+          return;
+        }
+
+        if (capability === 'image') {
+          const attachedImg = this.footer.getAttachedImage();
+          if (attachedImg) {
+            const reqText = inputText || 'Analyze this image and describe its visual composition';
+            this.runtimeService.sendCapabilityRequest('image', 'analyze_image', { image_url: attachedImg, prompt: reqText });
+            return;
+          }
+          if (inputText) {
+            this.eventBus.emit('user.message_sent', { text: `🎨 [Generate Image] ${inputText}` });
+            if (inputEl) inputEl.value = '';
+            this.runtimeService.sendCapabilityRequest('image', 'generate_image', { prompt: inputText });
+            return;
+          }
+          this.eventBus.emit('chat.mitra_message', {
+            role: 'mitra',
+            text: '🎨 **MITRA AI Image Studio**\n\nCreate stunning AI artwork or analyze your photos!\n\n• Type any image description in the message box, e.g. *"A cute robot reading a book"*\n• Or attach a photo using the 📎 button to analyze its content!',
+            intent: 'image_prompt',
+            suggestedActions: [
+              '🎨 Generate: A glowing cybernetic Mitra companion orb in space',
+              '🖼️ Generate: Sunrise over snow-capped Himalayan mountains painting',
+              '🏙️ Generate: Futuristic Mumbai with flying electric cars in 2050'
+            ]
+          });
+          return;
+        }
+
         const attachedImg = this.footer.getAttachedImage();
         const params = attachedImg ? { image_url: attachedImg } : {};
         this.runtimeService.sendCapabilityRequest(capability, intent, params);
@@ -192,7 +389,7 @@ export class MITRAWindow {
           this.eventBus.emit('user.message_sent', { text: `📷 [Attached Image] ${reqText}` });
           this.runtimeService.sendCapabilityRequest('ocr', 'extract_text', { image_url: imagePayload, prompt: reqText });
         } else {
-          this.runtimeService.sendMessage(text);
+          this.runtimeService.sendMessage(text, wasVoice);
         }
       },
       () => this.launcher.toggle()
@@ -227,9 +424,6 @@ export class MITRAWindow {
   }
 
   openSettingsModal() {
-    if (typeof window !== 'undefined' && typeof window.__MITRA_SETTINGS__ === 'function') {
-      try { window.__MITRA_SETTINGS__(); } catch (e) {}
-    }
     if (!this.settingsModal) {
       this.settingsModal = new SettingsModal();
       document.body.appendChild(this.settingsModal.element);
@@ -267,7 +461,8 @@ export class MITRAWindow {
     this.element.style.setProperty('width', '400px', 'important');
     this.element.style.setProperty('height', '650px', 'important');
     this.element.style.setProperty('max-height', 'calc(100vh - 120px)', 'important');
-    this.element.style.setProperty('background', '#141418', 'important');
+    const activeBg = (typeof localStorage !== 'undefined' && localStorage.getItem('mitra_chat_bg')) || 'var(--mitra-bg, #141418)';
+    this.element.style.setProperty('background', activeBg, 'important');
     this.element.style.setProperty('border', '1px solid rgba(255, 255, 255, 0.15)', 'important');
     this.element.style.setProperty('border-radius', '20px', 'important');
     this.element.style.setProperty('box-shadow', '0 12px 40px rgba(0, 0, 0, 0.6)', 'important');

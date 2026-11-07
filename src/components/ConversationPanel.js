@@ -73,7 +73,7 @@ export class ConversationPanel {
       eventBus.on('notification.received', (data) => {
         const msgText = data.text || data.message || data.title;
         if (msgText) {
-          this.addMitraMessage(msgText, new Date(), data.intent || 'calendar', data.suggestedActions || [], data.capabilityResult);
+          this.addMitraMessage(msgText, new Date(), data.intent || 'general', data.suggestedActions || [], data.capabilityResult);
         }
       });
 
@@ -306,11 +306,22 @@ export class ConversationPanel {
   addMitraMessage(text, date = new Date(), intent = null, suggestedActions = [], capabilityResult = null) {
     this.hideTypingIndicator();
 
+    // Auto-speak response if query was asked via Voice or if auto-voice is enabled
+    const wasVoice = Boolean(window.__mitra_last_query_was_voice);
+    if (wasVoice) {
+      window.__mitra_last_query_was_voice = false;
+    }
+    const shouldSpeak = wasVoice || intent === 'reminder_alert';
+
     // If capabilityResult is present, render the rich ecosystem card directly
     if (capabilityResult && capabilityResult.capability) {
+      const summaryText = capabilityResult.summary || text;
+      if (shouldSpeak) {
+        controlPlane.speakText(summaryText, true);
+      }
       this.addCapabilityCard(
         capabilityResult.capability,
-        capabilityResult.summary || text,
+        summaryText,
         '0.1s',
         capabilityResult.data || {},
         true
@@ -333,13 +344,8 @@ export class ConversationPanel {
     const bubble = document.createElement('div');
     bubble.className = 'chat-bubble mitra';
     
-    // Auto-speak response if query was asked via Voice or if auto-voice is enabled
-    const wasVoice = Boolean(window.__mitra_last_query_was_voice);
-    if (wasVoice) {
-      window.__mitra_last_query_was_voice = false;
-      controlPlane.speakText(text);
-    } else if (intent === 'reminder_alert') {
-      controlPlane.speakText(text);
+    if (shouldSpeak) {
+      controlPlane.speakText(text, true);
     }
 
     let html = `
@@ -372,11 +378,18 @@ export class ConversationPanel {
     html += `<div class="chat-timestamp">${timeStr}</div>`;
     bubble.innerHTML = html;
 
-    // Attach click listener for Speaker Button (Speech Output)
+    // Attach click listener for Speaker Button (Speech Output & Toggle Audio)
     const speakerBtn = bubble.querySelector('.mitra-speaker-btn');
     if (speakerBtn) {
       speakerBtn.addEventListener('click', () => {
-        controlPlane.speakText(text);
+        if (typeof window !== 'undefined' && 'speechSynthesis' in window && window.speechSynthesis.speaking) {
+          window.speechSynthesis.cancel();
+          speakerBtn.style.color = '';
+        } else {
+          speakerBtn.style.color = '#00e676';
+          controlPlane.speakText(text, true);
+          setTimeout(() => { if (speakerBtn) speakerBtn.style.color = ''; }, 6000);
+        }
       });
     }
 
@@ -417,6 +430,11 @@ export class ConversationPanel {
    * Render rich visual widgets for Calendar, OCR, Tasks, Voice, Health, etc.
    */
   addCapabilityCard(capability, resultText, duration, backendData = {}, isRealtime = false) {
+    if (isRealtime && Boolean(window.__mitra_last_query_was_voice)) {
+      window.__mitra_last_query_was_voice = false;
+      controlPlane.speakText(resultText || `Completed ${capability}`, true);
+    }
+
     const card = document.createElement('div');
     card.className = 'chat-bubble mitra capability-widget';
     card.style.background = 'rgba(21, 21, 29, 0.95)';
@@ -701,7 +719,53 @@ export class ConversationPanel {
         `;
       }
 
-    } else if (capability === 'ocr' || capability === 'analyze' || capability === 'summarize') {
+    } else if (capability === 'ocr' || capability === 'analyze') {
+      const ocrData = backendData.data || backendData;
+      const imgPreview = ocrData.image_url;
+      const confidence = ocrData.confidence || '98%';
+      widgetContent = `
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:6px;">
+          <div style="font-weight:700; font-size:13px; color:#00e676; display:flex; align-items:center; gap:6px;">📄 DOCUMENT OCR & TEXT EXTRACTION</div>
+          <span style="font-size:10px; background:rgba(0,230,118,0.2); color:#00e676; padding:2px 6px; border-radius:4px; font-weight:600;">● ${confidence} Confidence</span>
+        </div>
+        ${imgPreview ? `
+          <div style="margin-bottom:8px; border-radius:8px; overflow:hidden; max-height:160px; border:1px solid rgba(255,255,255,0.1); background:#000;">
+            <img src="${imgPreview}" alt="Scanned Document" style="width:100%; max-height:160px; object-fit:contain; display:block;" />
+          </div>
+        ` : ''}
+        <div class="ocr-extracted-text" style="background:rgba(0,0,0,0.35); border:1px solid rgba(255,255,255,0.1); padding:10px; border-radius:8px; font-size:12px; font-family:monospace; color:#e4e4e7; max-height:150px; overflow-y:auto; white-space:pre-wrap; line-height:1.45;">${this.escapeHtml(resultText)}</div>
+        <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">
+          <button class="mitra-action-chip btn-copy-ocr" style="margin:0; font-size:11px; padding:5px 12px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.2); color:#fff; border-radius:8px; cursor:pointer;">📋 Copy Text</button>
+          <button class="mitra-action-chip btn-summarize-ocr" style="margin:0; font-size:11px; padding:5px 12px; background:rgba(108,92,231,0.25); border:1px solid rgba(108,92,231,0.4); color:#fff; border-radius:8px; cursor:pointer;">📄 Summarize This Text</button>
+          <button class="mitra-action-chip btn-translate-ocr" style="margin:0; font-size:11px; padding:5px 12px; background:rgba(0,230,118,0.2); border:1px solid rgba(0,230,118,0.4); color:#fff; border-radius:8px; cursor:pointer;">🌐 Translate to Hindi</button>
+        </div>
+      `;
+
+    } else if (capability === 'image') {
+      const imgData = backendData.data || backendData;
+      const imgUrl = imgData.image_url || imgData.url;
+      const promptText = imgData.prompt || resultText;
+      const isAnalysis = imgData.type === 'analysis';
+      widgetContent = `
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:6px;">
+          <div style="font-weight:700; font-size:13px; color:#38bdf8; display:flex; align-items:center; gap:6px;">🎨 AI IMAGE STUDIO</div>
+          <span style="font-size:10px; background:rgba(56,189,248,0.2); color:#38bdf8; padding:2px 6px; border-radius:4px; font-weight:600;">${isAnalysis ? 'Analysis' : 'Generated'}</span>
+        </div>
+        ${imgUrl ? `
+          <div style="border-radius:10px; overflow:hidden; margin-bottom:8px; border:1px solid rgba(255,255,255,0.15); background:#000;">
+            <img src="${imgUrl}" alt="AI Studio" style="width:100%; max-height:260px; object-fit:cover; display:block;" />
+          </div>
+        ` : ''}
+        <div style="font-size:12px; color:#e4e4e7; margin-bottom:8px; line-height:1.4;">${this.escapeHtml(resultText)}</div>
+        ${imgUrl ? `
+          <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;">
+            <button class="btn-download-ai-img" data-url="${encodeURI(imgUrl)}" style="border:none; cursor:pointer; font-size:11px; background:rgba(56,189,248,0.25); color:#38bdf8; padding:6px 14px; border-radius:8px; border:1px solid rgba(56,189,248,0.4); font-weight:700; display:inline-flex; align-items:center; gap:6px; transition:0.2s;">📥 Download High-Res</button>
+            <a href="${imgUrl}" target="_blank" rel="noopener noreferrer" class="btn-view-full-ai-img" style="text-decoration:none; font-size:11px; background:rgba(255,255,255,0.08); color:#fff; padding:6px 14px; border-radius:8px; border:1px solid rgba(255,255,255,0.15); display:inline-flex; align-items:center; gap:6px;">🔍 View Full Image</a>
+          </div>
+        ` : ''}
+      `;
+
+    } else if (capability === 'summarize') {
       widgetContent = `
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:6px;">
           <div style="font-weight:700; font-size:13px; color:#00e676; display:flex; align-items:center; gap:6px;">📄 ANALYZED DOCUMENT SUMMARY</div>
@@ -1311,7 +1375,46 @@ export class ConversationPanel {
       `;
     }
 
-    card.innerHTML = `${widgetContent}<div class="chat-timestamp">${now}</div>`;
+    card.innerHTML = `
+      ${widgetContent}
+      <div class="chat-timestamp" style="display:flex; align-items:center; justify-content:space-between; margin-top:8px;">
+        <span>${now}</span>
+        <button class="mitra-speaker-btn cap-speaker-btn" title="Listen to AI voice" style="background:none; border:none; cursor:pointer; font-size:13px; opacity:0.85; padding:2px 4px;">🔊</button>
+      </div>
+    `;
+
+    const capSpeakerBtn = card.querySelector('.cap-speaker-btn');
+    if (capSpeakerBtn) {
+      capSpeakerBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (typeof window !== 'undefined' && 'speechSynthesis' in window && window.speechSynthesis.speaking) {
+          window.speechSynthesis.cancel();
+          capSpeakerBtn.style.color = '';
+        } else {
+          capSpeakerBtn.style.color = '#00e676';
+          controlPlane.speakText(resultText || capability, true);
+          setTimeout(() => { if (capSpeakerBtn) capSpeakerBtn.style.color = ''; }, 6000);
+        }
+      });
+    }
+
+    const copyOcrBtn = card.querySelector('.btn-copy-ocr');
+    if (copyOcrBtn) {
+      copyOcrBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const textEl = card.querySelector('.ocr-extracted-text');
+        const textToCopy = textEl ? textEl.textContent : (resultText || '');
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(textToCopy).then(() => {
+            copyOcrBtn.textContent = '✅ Copied!';
+            setTimeout(() => { copyOcrBtn.textContent = '📋 Copy Text'; }, 2000);
+          }).catch(() => {
+            copyOcrBtn.textContent = '✅ Copied!';
+            setTimeout(() => { copyOcrBtn.textContent = '📋 Copy Text'; }, 2000);
+          });
+        }
+      });
+    }
 
     const draftBtn = card.querySelector('.btn-email-draft');
     if (draftBtn) {
@@ -1574,6 +1677,12 @@ export class ConversationPanel {
           }
         }
 
+        try {
+          const stored = JSON.parse(localStorage.getItem('mitra_tasks') || '[]');
+          const updated = stored.map(t => (t.id === taskId || t.title === titleSpan?.textContent ? { ...t, status: newStatus } : t));
+          localStorage.setItem('mitra_tasks', JSON.stringify(updated));
+        } catch (e) {}
+
         if (taskId) {
           try {
             const userId = this.contextStore ? this.contextStore.getUserId() : 'anonymous';
@@ -1639,6 +1748,8 @@ export class ConversationPanel {
       btn.addEventListener('click', () => {
         if (typeof window !== 'undefined' && window.__MITRA_NAV__) {
           window.__MITRA_NAV__('calendar');
+        } else if (typeof window !== 'undefined') {
+          window.location.href = '/calendar';
         }
       });
     });
@@ -1673,6 +1784,125 @@ export class ConversationPanel {
         }
       });
     });
+
+    // ── AI Image Download Handler (Direct Cross-Origin Blob & Canvas Fallback) ──
+    const downloadImgBtn = card.querySelector('.btn-download-ai-img');
+    if (downloadImgBtn) {
+      downloadImgBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const rawUrl = decodeURI(downloadImgBtn.getAttribute('data-url') || '');
+        if (!rawUrl) return;
+
+        const origHtml = downloadImgBtn.innerHTML;
+        downloadImgBtn.innerHTML = '⏳ Downloading...';
+        downloadImgBtn.disabled = true;
+
+        const triggerDownload = (blob, filename) => {
+          const blobUrl = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
+        };
+
+        const filename = `mitra-ai-artwork-${Date.now()}.jpg`;
+
+        try {
+          const res = await fetch(rawUrl, { mode: 'cors' });
+          if (res.ok) {
+            const blob = await res.blob();
+            triggerDownload(blob, filename);
+            downloadImgBtn.innerHTML = '✅ Downloaded!';
+            setTimeout(() => {
+              downloadImgBtn.innerHTML = origHtml;
+              downloadImgBtn.disabled = false;
+            }, 2500);
+            return;
+          }
+        } catch (fetchErr) {
+          console.warn('[MITRA] Direct fetch blob failed, falling back to Canvas draw:', fetchErr);
+        }
+
+        // HTML5 Canvas Draw & Export
+        try {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => {
+            try {
+              const canvas = document.createElement('canvas');
+              canvas.width = img.naturalWidth || img.width || 1024;
+              canvas.height = img.naturalHeight || img.height || 768;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0);
+              canvas.toBlob((b) => {
+                if (b) {
+                  triggerDownload(b, filename);
+                  downloadImgBtn.innerHTML = '✅ Downloaded!';
+                } else {
+                  window.open(rawUrl, '_blank');
+                  downloadImgBtn.innerHTML = origHtml;
+                }
+                setTimeout(() => {
+                  downloadImgBtn.innerHTML = origHtml;
+                  downloadImgBtn.disabled = false;
+                }, 2500);
+              }, 'image/jpeg', 0.95);
+            } catch (err) {
+              window.open(rawUrl, '_blank');
+              downloadImgBtn.innerHTML = origHtml;
+              downloadImgBtn.disabled = false;
+            }
+          };
+          img.onerror = () => {
+            window.open(rawUrl, '_blank');
+            downloadImgBtn.innerHTML = origHtml;
+            downloadImgBtn.disabled = false;
+          };
+          img.src = rawUrl;
+        } catch (canvasErr) {
+          window.open(rawUrl, '_blank');
+          downloadImgBtn.innerHTML = origHtml;
+          downloadImgBtn.disabled = false;
+        }
+      });
+    }
+
+    // ── AI Image Full View Handler (Stop Bubbling & Direct Window Open) ──
+    const viewFullBtn = card.querySelector('.btn-view-full-ai-img');
+    if (viewFullBtn) {
+      viewFullBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+      });
+    }
+
+    // ── OCR Document Action Handlers ──
+    const summarizeOcrBtn = card.querySelector('.btn-summarize-ocr');
+    if (summarizeOcrBtn) {
+      summarizeOcrBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const textEl = card.querySelector('.ocr-extracted-text');
+        const text = textEl ? textEl.textContent : '';
+        if (text && this.eventBus) {
+          this.eventBus.emit('chat.send_suggested', `Summarize this: ${text}`);
+        }
+      });
+    }
+
+    const translateOcrBtn = card.querySelector('.btn-translate-ocr');
+    if (translateOcrBtn) {
+      translateOcrBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const textEl = card.querySelector('.ocr-extracted-text');
+        const text = textEl ? textEl.textContent : '';
+        if (text && this.eventBus) {
+          this.eventBus.emit('chat.send_suggested', `Translate "${text}" into Hindi`);
+        }
+      });
+    }
 
     this.element.appendChild(card);
     this.scrollToBottom();

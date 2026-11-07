@@ -3,6 +3,9 @@ export class CapabilityLauncher {
     this.element = document.createElement('div');
     this.element.className = 'mitra-launcher';
     this.element.id = 'launcher';
+    this.element.style.display = 'none';
+    this.element.style.visibility = 'hidden';
+    this.element.style.pointerEvents = 'none';
 
     // Complete list of all 12 capabilities supported by backend v5
     const capabilities = [
@@ -43,14 +46,34 @@ export class CapabilityLauncher {
       </div>
     `;
 
-    this.element.querySelector('#btn-close-launcher').addEventListener('click', () => {
+    this.element.querySelector('#btn-close-launcher').addEventListener('click', (e) => {
+      e.stopPropagation();
       this.close();
       if (onClose) onClose();
     });
 
+    // Close launcher if user clicks outside of cards (backdrop click)
+    this.element.addEventListener('click', (e) => {
+      if (e.target === this.element) {
+        this.close();
+        if (onClose) onClose();
+      }
+    });
+
+    // Close launcher when Escape is pressed
+    if (typeof window !== 'undefined') {
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && this.isOpen()) {
+          this.close();
+          if (onClose) onClose();
+        }
+      });
+    }
+
     const caps = this.element.querySelectorAll('.capability-card');
     caps.forEach(card => {
       card.addEventListener('click', (e) => {
+        e.stopPropagation();
         const capability = e.currentTarget.getAttribute('data-capability');
         const intent = e.currentTarget.getAttribute('data-intent');
         if (onCapabilitySelected) onCapabilitySelected(capability, intent);
@@ -59,16 +82,26 @@ export class CapabilityLauncher {
     });
   }
 
+  isOpen() {
+    return this.element.classList.contains('active');
+  }
+
   open() {
+    this.element.style.display = 'flex';
+    this.element.style.visibility = 'visible';
+    this.element.style.pointerEvents = 'auto';
     this.element.classList.add('active');
   }
 
   close() {
     this.element.classList.remove('active');
+    this.element.style.pointerEvents = 'none';
+    this.element.style.visibility = 'hidden';
+    this.element.style.display = 'none';
   }
 
   toggle() {
-    if (this.element.classList.contains('active')) {
+    if (this.isOpen()) {
       this.close();
     } else {
       this.open();
