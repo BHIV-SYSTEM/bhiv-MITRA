@@ -629,11 +629,11 @@ mitra-companion[hide-fab="true"] #mitra-shell {
 }
 
 .chat-bubble.user {
-  background: linear-gradient(135deg, #005c4b 0%, #026c59 100%);
+  background: var(--mitra-user-bubble-bg, linear-gradient(135deg, #005c4b 0%, #026c59 100%));
   color: #ffffff;
   align-self: flex-end;
   border-radius: 16px 16px 4px 16px;
-  box-shadow: 0 2px 8px rgba(0, 92, 75, 0.35);
+  box-shadow: var(--mitra-user-bubble-shadow, 0 2px 8px rgba(0, 92, 75, 0.35));
 }
 
 .chat-bubble.user .chat-timestamp {

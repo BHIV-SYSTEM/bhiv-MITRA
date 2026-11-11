@@ -95,10 +95,36 @@ export class MITRAWindow {
     };
     syncActiveChatBackground();
 
+    // Live User Message Bubble Color synchronizer
+    const syncUserBubbleColor = () => {
+      try {
+        const bubbleBg = (typeof localStorage !== 'undefined' && localStorage.getItem('mitra_user_bubble_color')) || '';
+        if (bubbleBg) {
+          this.element.style.setProperty('--mitra-user-bubble-bg', bubbleBg, 'important');
+          this.element.style.setProperty('--mitra-user-bubble-shadow', '0 2px 8px rgba(0, 0, 0, 0.3)', 'important');
+        } else {
+          this.element.style.removeProperty('--mitra-user-bubble-bg');
+          this.element.style.removeProperty('--mitra-user-bubble-shadow');
+        }
+      } catch (e) {}
+    };
+    syncUserBubbleColor();
+
     if (typeof window !== 'undefined') {
       window.addEventListener('mitra:background-changed', (e) => {
         const bg = e.detail?.background || (typeof localStorage !== 'undefined' && localStorage.getItem('mitra_chat_bg')) || 'var(--mitra-bg, #141418)';
         this.element.style.setProperty('background', bg, 'important');
+      });
+
+      window.addEventListener('mitra:user-bubble-color-changed', (e) => {
+        const color = e.detail?.color || (typeof localStorage !== 'undefined' && localStorage.getItem('mitra_user_bubble_color')) || '';
+        if (color) {
+          this.element.style.setProperty('--mitra-user-bubble-bg', color, 'important');
+          this.element.style.setProperty('--mitra-user-bubble-shadow', '0 2px 8px rgba(0, 0, 0, 0.3)', 'important');
+        } else {
+          this.element.style.removeProperty('--mitra-user-bubble-bg');
+          this.element.style.removeProperty('--mitra-user-bubble-shadow');
+        }
       });
     }
 const initialAvatar = getActiveMitraAvatar(contextStore);

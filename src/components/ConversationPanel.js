@@ -59,6 +59,22 @@ export class ConversationPanel {
     // Load existing history on creation
     this.renderHistory();
 
+    if (typeof window !== 'undefined') {
+      window.addEventListener('mitra:user-bubble-color-changed', (e) => {
+        const color = e.detail?.color || (typeof localStorage !== 'undefined' && localStorage.getItem('mitra_user_bubble_color')) || '';
+        const bubbles = this.element.querySelectorAll('.chat-bubble.user');
+        bubbles.forEach(b => {
+          if (color) {
+            b.style.setProperty('background', color, 'important');
+            b.style.setProperty('box-shadow', '0 2px 8px rgba(0, 0, 0, 0.3)', 'important');
+          } else {
+            b.style.removeProperty('background');
+            b.style.removeProperty('box-shadow');
+          }
+        });
+      });
+    }
+
     if (eventBus) {
       // Real-time listener: append new incoming messages immediately
       eventBus.on('chat.mitra_message', (data) => {
@@ -292,6 +308,11 @@ export class ConversationPanel {
 
     const bubble = document.createElement('div');
     bubble.className = 'chat-bubble user';
+    const customUserBg = (typeof localStorage !== 'undefined' && localStorage.getItem('mitra_user_bubble_color')) || '';
+    if (customUserBg) {
+      bubble.style.setProperty('background', customUserBg, 'important');
+      bubble.style.setProperty('box-shadow', '0 2px 8px rgba(0, 0, 0, 0.3)', 'important');
+    }
     const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     bubble.innerHTML = `
       <div style="overflow-wrap: break-word; word-break: break-word; box-sizing: border-box; font-size:13.5px; line-height:1.45;">${this.escapeHtml(text)}</div>

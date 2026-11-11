@@ -510,6 +510,36 @@ export class SettingsModal {
               </button>
             </div>
           </div>
+
+          <!-- User Sent Message Bubble Color Customizer -->
+          <div style="margin-top:12px; padding:10px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+              <div>
+                <div style="font-size:11.5px; font-weight:700; color:#fff; display:flex; align-items:center; gap:6px;">
+                  <span>💬</span> Sent Message Bubble Color
+                </div>
+                <div style="font-size:10px; color:rgba(255,255,255,0.5); margin-top:2px;">
+                  Customize your sent chat bubble color (default is WhatsApp emerald green)
+                </div>
+              </div>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <input type="color" id="input-user-bubble-picker" value="#005c4b" style="width:28px; height:24px; border:none; border-radius:4px; background:none; cursor:pointer;" title="Pick Any Custom Color" />
+                <span id="label-user-bubble-val" style="font-family:monospace; font-size:10px; color:rgba(255,255,255,0.6);">Default</span>
+              </div>
+            </div>
+
+            <!-- Color Palette Presets -->
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <button type="button" class="user-bubble-swatch" data-bg="linear-gradient(135deg, #005c4b 0%, #026c59 100%)" data-name="Emerald" style="width:24px; height:24px; border-radius:50%; background:#005c4b; border:2px solid #fff; cursor:pointer;" title="Emerald Green (Default)"></button>
+              <button type="button" class="user-bubble-swatch" data-bg="linear-gradient(135deg, #6c5ce7 0%, #5843db 100%)" data-name="Royal Violet" style="width:24px; height:24px; border-radius:50%; background:#6c5ce7; border:2px solid transparent; cursor:pointer;" title="Royal Violet"></button>
+              <button type="button" class="user-bubble-swatch" data-bg="linear-gradient(135deg, #0084ff 0%, #0062bd 100%)" data-name="Ocean Blue" style="width:24px; height:24px; border-radius:50%; background:#0084ff; border:2px solid transparent; cursor:pointer;" title="Ocean Blue (Messenger)"></button>
+              <button type="button" class="user-bubble-swatch" data-bg="linear-gradient(135deg, #e84393 0%, #d63031 100%)" data-name="Sunset Coral" style="width:24px; height:24px; border-radius:50%; background:#e84393; border:2px solid transparent; cursor:pointer;" title="Sunset Coral"></button>
+              <button type="button" class="user-bubble-swatch" data-bg="linear-gradient(135deg, #e67e22 0%, #d35400 100%)" data-name="Amber Gold" style="width:24px; height:24px; border-radius:50%; background:#e67e22; border:2px solid transparent; cursor:pointer;" title="Amber Gold"></button>
+              <button type="button" class="user-bubble-swatch" data-bg="linear-gradient(135deg, #0984e3 0%, #00cec9 100%)" data-name="Cyber Cyan" style="width:24px; height:24px; border-radius:50%; background:#00cec9; border:2px solid transparent; cursor:pointer;" title="Cyber Cyan"></button>
+              <button type="button" class="user-bubble-swatch" data-bg="linear-gradient(135deg, #2d3436 0%, #1e272e 100%)" data-name="Midnight Slate" style="width:24px; height:24px; border-radius:50%; background:#2d3436; border:2px solid transparent; cursor:pointer;" title="Midnight Dark Slate"></button>
+              <button type="button" id="btn-reset-user-bubble" style="background:none; border:none; font-size:10px; color:#a29bfe; cursor:pointer; text-decoration:underline; padding-left:4px;">↺ Reset to Green</button>
+            </div>
+          </div>
         </div>
 
         <!-- 3. PROFILE -->
@@ -859,6 +889,74 @@ export class SettingsModal {
         if (panelCustom) panelCustom.style.display = 'none';
         if (btnToggleCustom) btnToggleCustom.textContent = '✏️ Customize';
         alert('Theme reset to Midnight default.');
+      });
+    }
+
+    // ── User Sent Message Bubble Color Controller ──
+    const bubblePicker = this.element.querySelector('#input-user-bubble-picker');
+    const bubbleLabel = this.element.querySelector('#label-user-bubble-val');
+    const bubbleSwatches = this.element.querySelectorAll('.user-bubble-swatch');
+    const btnResetBubble = this.element.querySelector('#btn-reset-user-bubble');
+
+    const currentSavedBubble = (typeof localStorage !== 'undefined' && localStorage.getItem('mitra_user_bubble_color')) || '';
+    if (currentSavedBubble) {
+      if (bubbleLabel) bubbleLabel.textContent = 'Custom';
+      bubbleSwatches.forEach(s => {
+        if (s.getAttribute('data-bg') === currentSavedBubble) {
+          s.style.borderColor = '#fff';
+          if (bubbleLabel) bubbleLabel.textContent = s.getAttribute('data-name');
+        } else {
+          s.style.borderColor = 'transparent';
+        }
+      });
+    }
+
+    const applyBubbleColor = (bgString, nameOrHex) => {
+      if (bgString) {
+        localStorage.setItem('mitra_user_bubble_color', bgString);
+        if (bubbleLabel) bubbleLabel.textContent = nameOrHex || 'Custom';
+      } else {
+        localStorage.removeItem('mitra_user_bubble_color');
+        if (bubbleLabel) bubbleLabel.textContent = 'Default';
+      }
+
+      window.dispatchEvent(new CustomEvent('mitra:user-bubble-color-changed', {
+        detail: { color: bgString || '' }
+      }));
+
+      // Highlight active swatch
+      bubbleSwatches.forEach(s => {
+        if (s.getAttribute('data-bg') === bgString) {
+          s.style.borderColor = '#fff';
+        } else {
+          s.style.borderColor = 'transparent';
+        }
+      });
+    };
+
+    bubbleSwatches.forEach(swatch => {
+      swatch.addEventListener('click', () => {
+        const bg = swatch.getAttribute('data-bg');
+        const name = swatch.getAttribute('data-name');
+        applyBubbleColor(bg, name);
+      });
+    });
+
+    if (bubblePicker) {
+      bubblePicker.addEventListener('input', (e) => {
+        const hex = e.target.value;
+        const grad = `linear-gradient(135deg, ${hex} 0%, ${hex}dd 100%)`;
+        applyBubbleColor(grad, hex);
+      });
+    }
+
+    if (btnResetBubble) {
+      btnResetBubble.addEventListener('click', () => {
+        applyBubbleColor('', 'Default');
+        if (bubblePicker) bubblePicker.value = '#005c4b';
+        bubbleSwatches.forEach(s => {
+          s.style.borderColor = s.getAttribute('data-name') === 'Emerald' ? '#fff' : 'transparent';
+        });
       });
     }
 
