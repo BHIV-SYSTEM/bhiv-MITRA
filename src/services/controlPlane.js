@@ -24,7 +24,18 @@ export async function ensureAuthToken(forceRefresh = false) {
   if (typeof localStorage === 'undefined') return null;
   if (!forceRefresh) {
     const existing = localStorage.getItem('token') || localStorage.getItem('authToken') || localStorage.getItem('jwt');
-    if (existing) return existing;
+    if (existing) {
+      try {
+        const parts = existing.split('.');
+        if (parts.length === 3) {
+          const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+          if (payload.exp && (payload.exp * 1000) < (Date.now() + 60000)) {
+            forceRefresh = true;
+          }
+        }
+      } catch (e) {}
+      if (!forceRefresh) return existing;
+    }
   }
 
   try {
@@ -954,10 +965,11 @@ export class ControlPlane {
       // ═══════════════════════════════════════════════════════════════════
 
       eventBus.emit('health.changed', { status: 'Executing' });
+      eventBus.emit('runtime.thinking', { stage: 'Mitra synthesizing answer...' });
       let data = null;
 
-      // AbortController timeout helper (7-second timeout prevents indefinite hanging)
-      const fetchWithTimeout = async (url, opts, timeoutMs = 7000) => {
+      // AbortController timeout helper (25-second timeout accommodates cloud LLM generative latency)
+      const fetchWithTimeout = async (url, opts, timeoutMs = 25000) => {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), timeoutMs);
         try {
@@ -980,7 +992,7 @@ export class ControlPlane {
           method: 'POST',
           headers: headers,
           body: JSON.stringify(payload),
-        }, 7000);
+        }, 25000);
 
         if (!response.ok && (response.status === 401 || response.status === 403)) {
           headers = await buildHeaders(true);
@@ -988,7 +1000,7 @@ export class ControlPlane {
             method: 'POST',
             headers: headers,
             body: JSON.stringify(payload),
-          }, 7000);
+          }, 25000);
         }
 
         if (response.ok) {
@@ -2894,11 +2906,20 @@ export class ControlPlane {
       };
     }
 
-    // 7. General fallback
+    // 7. AI, Machine Learning, Technology Knowledge
+    if (/\b(what\s+is\s+ai|artificial\s+intelligence|machine\s+learning|deep\s+learning|neural\s+networks?|llm|generative\s+ai)\b/i.test(q)) {
+      return {
+        message: "🤖 **Artificial Intelligence (AI)**\n\nArtificial Intelligence is a domain of computer science that builds systems capable of performing tasks that traditionally require human intellect—such as visual perception, natural language reasoning, decision-making, and autonomous problem-solving.\n\n### Key Concepts:\n- **Machine Learning (ML)**: Statistical models that learn and adapt from datasets without explicit rules.\n- **Deep Learning & LLMs**: Multi-layered neural network architectures powering modern conversational models and knowledge retrieval.\n- **Universal Agentic Capabilities**: Integrating AI directly with real-world applications (emails, calendars, database querying, document OCR, and automated actions).",
+        intent: 'ai_knowledge',
+        suggested_actions: ['🎓 Explore UniGuru Concepts', '🤖 Learn About MITRA', '📰 Latest AI Developments']
+      };
+    }
+
+    // 8. General fallback
     return {
-      message: `I have received and processed your query: **"${text}"**.\n\nAll ecosystem capabilities (Samachar, UniGuru, SETU, Artha, and WhatsApp) are operational. How would you like to proceed?`,
+      message: `I'm analyzing your request: **"${text}"**.\n\nI can help you explore concepts via **UniGuru**, check verified news through **Samachar**, manage your **Tasks & Calendar**, or execute workflows across the BHIV Ecosystem.\n\nHow would you like to proceed?`,
       intent: 'general',
-      suggested_actions: ['📰 Samachar News', '🎓 UniGuru Concepts', '🌉 SETU Inventory', '📊 Artha Financials']
+      suggested_actions: ['🎓 UniGuru Concepts', '📰 Samachar News', '📋 Add to Tasks', '📅 Plan My Day']
     };
   }
 
