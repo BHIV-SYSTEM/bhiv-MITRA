@@ -286,26 +286,26 @@ class MitraCompanion extends HTMLElement {
 
     // Window initial state:
     this.style.setProperty('pointer-events', 'none', 'important');
-    const savedState = contextStore.getWindowState ? contextStore.getWindowState() : 'expanded';
+    const savedState = contextStore.getWindowState ? contextStore.getWindowState() : 'minimized';
     if (hideFab) {
       mitraWindow.minimize();
       mitraButton.hide();
       if (contextStore.setWindowState) contextStore.setWindowState('minimized');
       window.dispatchEvent(new CustomEvent('mitra:orb-state-changed', { detail: { open: false } }));
-    } else if (savedState === 'minimized') {
-      shell.style.setProperty('display', 'flex', 'important');
-      shell.style.setProperty('pointer-events', 'auto', 'important');
-      shell.style.setProperty('z-index', '9999999', 'important');
-      mitraWindow.minimize();
-      mitraButton.show();
-      window.dispatchEvent(new CustomEvent('mitra:orb-state-changed', { detail: { open: false } }));
-    } else {
+    } else if (savedState === 'expanded') {
       shell.style.setProperty('display', 'flex', 'important');
       shell.style.setProperty('pointer-events', 'auto', 'important');
       shell.style.setProperty('z-index', '9999999', 'important');
       mitraButton.hide();
       mitraWindow.expand();
       window.dispatchEvent(new CustomEvent('mitra:orb-state-changed', { detail: { open: true } }));
+    } else {
+      shell.style.setProperty('display', 'flex', 'important');
+      shell.style.setProperty('pointer-events', 'auto', 'important');
+      shell.style.setProperty('z-index', '9999999', 'important');
+      mitraWindow.minimize();
+      mitraButton.show();
+      window.dispatchEvent(new CustomEvent('mitra:orb-state-changed', { detail: { open: false } }));
     }
 
     eventBus.on('runtime.thinking', () => mitraButton.setThinking(true));

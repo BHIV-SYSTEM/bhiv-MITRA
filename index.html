@@ -261,17 +261,21 @@
     api-base-url="https://mitra.blackholeinfiverse.com"></mitra-companion>
   <script type="module" src="src/mitra-companion.js?v=v55"></script>
   <script>
-    // Guarantee clean floating orb visibility on index.html
+    // Guarantee clean floating orb visibility on index.html - default to minimized
     try {
       const raw = localStorage.getItem('mitra_context_store');
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed.dockMode !== 'floating' || parsed.position || parsed.windowState === 'minimized') {
-          parsed.dockMode = 'floating';
-          parsed.position = null;
-          parsed.windowState = 'expanded';
-          localStorage.setItem('mitra_context_store', JSON.stringify(parsed));
-        }
+        parsed.dockMode = 'floating';
+        parsed.position = null;
+        parsed.windowState = 'minimized';
+        localStorage.setItem('mitra_context_store', JSON.stringify(parsed));
+      } else {
+        localStorage.setItem('mitra_context_store', JSON.stringify({
+          dockMode: 'floating',
+          position: null,
+          windowState: 'minimized'
+        }));
       }
     } catch (e) { }
 
