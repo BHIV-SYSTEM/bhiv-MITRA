@@ -584,7 +584,7 @@ export const IntegrationsModal: React.FC<IntegrationsModalProps> = ({ isOpen, on
             code: authCode,
             waba_id: sessionWabaId,
             phone_number_id: sessionPhoneId,
-            redirect_uri: window.location.origin + '/'
+            redirect_uri: ""
           })
         })
           .then((exchangeRes) => {

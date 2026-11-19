@@ -240,8 +240,8 @@ async def exchange_embedded_signup_code(
 
     redirect_uri = (
         req.redirect_uri
-        or os.getenv("META_WA_REDIRECT_URI", "")
-        or "https://mitra.blackholeinfiverse.com/"
+        if req.redirect_uri is not None
+        else os.getenv("META_WA_REDIRECT_URI", "")
     ).strip()
 
     # 1. Server-side exchange: Authorization Code -> Access Token
@@ -259,6 +259,23 @@ async def exchange_embedded_signup_code(
     except Exception as exc:
         logger.error(f"Network error during Meta token exchange: {exc}")
         raise HTTPException(status_code=502, detail="Failed to connect to Meta Graph API.")
+
+    if token_resp.status_code != 200:
+        # If Meta failed due to redirect_uri mismatch (common when FB.login JS SDK dialog omits redirect_uri),
+        # retry token exchange without redirect_uri or with empty redirect_uri per Meta Embedded Signup spec.
+        if "redirect_uri" in str(token_resp.text).lower() or token_params.get("redirect_uri"):
+            logger.info("Meta rejected redirect_uri; retrying token exchange without redirect_uri (FB.login JS SDK compatibility)")
+            retry_params = {"client_id": app_id, "client_secret": app_secret, "code": code}
+            try:
+                retry_resp = requests.get(token_url, params=retry_params, timeout=15)
+                if retry_resp.status_code == 200:
+                    token_resp = retry_resp
+                else:
+                    retry_resp_empty = requests.get(token_url, params={**retry_params, "redirect_uri": ""}, timeout=15)
+                    if retry_resp_empty.status_code == 200:
+                        token_resp = retry_resp_empty
+            except Exception as retry_exc:
+                logger.warning(f"Error during redirect_uri retry exchange: {retry_exc}")
 
     if token_resp.status_code != 200:
         try:
