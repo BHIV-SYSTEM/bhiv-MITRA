@@ -314,6 +314,13 @@ class MetaWhatsAppExecutor:
                 elif code in (80007, 130429):
                     err_code = "META_RATE_LIMITED"
                     user_friendly_msg = "Meta WhatsApp Cloud API rate limit reached. Please retry after a few minutes."
+                elif code == 133010:
+                    err_code = "META_ACCOUNT_NOT_REGISTERED"
+                    user_friendly_msg = (
+                        "WhatsApp Phone Number Not Registered (Code 133010): "
+                        "The connected phone number has not completed its Cloud API two-step verification PIN registration in Meta WhatsApp Manager. "
+                        "Please open WhatsApp Manager and set the 6-digit PIN for your number."
+                    )
                 else:
                     err_code = f"META_API_ERROR_{code}" if code else "META_API_ERROR"
                     user_friendly_msg = raw_msg

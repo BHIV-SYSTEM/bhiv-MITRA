@@ -610,6 +610,70 @@ async def send_business_message(
     return res
 
 
+class MetaRegisterPhoneRequest(BaseModel):
+    pin: str = Field(..., min_length=6, max_length=6, description="6-digit two-step verification PIN for WhatsApp Cloud API")
+
+
+@router.post("/register-phone")
+async def register_phone_number_on_meta(
+    req: MetaRegisterPhoneRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Registers a connected WhatsApp Business phone number on the Cloud API platform
+    using a 6-digit two-step verification PIN to resolve Meta error #133010 (Account not registered).
+    """
+    user_id = current_user.get("user_id") or current_user.get("id") or current_user.get("sub")
+    from app.services.connected_account_service import connected_account_service
+    conn = connected_account_service.get_user_connection(
+        user_id=user_id,
+        provider="whatsapp_business",
+        include_decrypted_tokens=True
+    )
+    if not conn:
+        raise HTTPException(status_code=400, detail="No connected WhatsApp Business account found for this user.")
+
+    token = conn.get("access_token")
+    extra = conn.get("extra_data") or {}
+    phone_id = extra.get("phone_number_id") or conn.get("provider_account_id")
+
+    if not token or not phone_id:
+        raise HTTPException(status_code=400, detail="Phone Number ID or Access Token missing in connected account.")
+
+    # Call Meta Graph API /{phone_id}/register
+    graph_base = os.getenv("WHATSAPP_CLOUD_BASE_URL", "https://graph.facebook.com").rstrip("/")
+    api_version = os.getenv("WHATSAPP_CLOUD_API_VERSION", "v20.0")
+    register_url = f"{graph_base}/{api_version}/{phone_id}/register"
+
+    try:
+        resp = requests.post(
+            register_url,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "messaging_product": "whatsapp",
+                "pin": req.pin.strip()
+            },
+            timeout=15
+        )
+        res_json = resp.json()
+        if resp.status_code in (200, 201) and res_json.get("success"):
+            logger.info(f"Successfully registered phone number {phone_id} on WhatsApp Cloud API.")
+            return {
+                "status": "success",
+                "message": "Phone number successfully registered on WhatsApp Cloud API. You can now send messages!",
+                "phone_number_id": phone_id
+            }
+        else:
+            error_msg = res_json.get("error", {}).get("message") or f"Meta returned HTTP {resp.status_code}"
+            logger.warning(f"Failed to register phone number on Meta Cloud API: {res_json}")
+            raise HTTPException(status_code=400, detail=f"Meta Registration Error: {error_msg}")
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail=f"Network error contacting Meta Graph API: {exc}")
+
+
 # ── 3. META WEBHOOKS (VERIFICATION & DELIVERY STATUS) ──
 
 @router.get("/webhook")
