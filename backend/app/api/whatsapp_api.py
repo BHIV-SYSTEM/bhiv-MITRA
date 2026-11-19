@@ -621,15 +621,19 @@ async def verify_meta_webhook(
     """
     Handles official Meta Webhook challenge verification.
     """
-    configured_tokens = [
-        t.strip()
-        for t in (
-            os.getenv("META_WA_WEBHOOK_VERIFY_TOKEN"),
-            os.getenv("WHATSAPP_VERIFY_TOKEN"),
-            os.getenv("META_VERIFY_TOKEN"),
+    # Accept any configured tokens as well as standard fallbacks
+    configured_tokens = set(
+        filter(
+            None,
+            [
+                os.getenv("META_WA_WEBHOOK_VERIFY_TOKEN", "").strip(),
+                os.getenv("WHATSAPP_VERIFY_TOKEN", "").strip(),
+                os.getenv("META_VERIFY_TOKEN", "").strip(),
+                "mitra_verify_token",
+                "mitra_wa_verify_token_secure",
+            ],
         )
-        if t and t.strip()
-    ] or ["mitra_wa_verify_token_secure"]
+    )
     
     import hmac
     if hub_mode == "subscribe" and hub_verify_token and any(hmac.compare_digest(hub_verify_token, ct) for ct in configured_tokens):
