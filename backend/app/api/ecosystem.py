@@ -324,3 +324,278 @@ async def verify_runtime_proof(
         status_code=404,
         detail=f"No proof found for trace_id: {trace_id}",
     )
+
+
+# ── AIAIC (KRISHI SAMPADA / GOV OPS) NOTIFICATION ROUTES ──
+
+import hmac
+import hashlib
+import uuid
+from typing import List
+
+_IDEMPOTENCY_CACHE: Dict[str, Dict[str, Any]] = {}
+
+
+def _get_ecosystem_db():
+    try:
+        from app.services.connected_account_service import _get_db
+        return _get_db()
+    except Exception:
+        return None
+
+
+def _verify_aiaic_key(x_api_key: Optional[str]) -> bool:
+    if not x_api_key or not x_api_key.strip():
+        return False
+    configured = os.getenv("AIAIC_SERVICE_KEY", "").strip()
+    alt_keys = [k.strip() for k in os.getenv("ECOSYSTEM_API_KEYS", "").split(",") if k.strip()]
+    valid_keys = [k for k in [configured] + alt_keys if k]
+    if not valid_keys:
+        return False
+    return any(hmac.compare_digest(x_api_key.strip(), vk) for vk in valid_keys)
+
+
+class WhatsAppTemplateSendRequest(BaseModel):
+    to_phone: str
+    template_name: str
+    language_code: str = "en_US"
+    components: Optional[List[Dict[str, Any]]] = None
+
+
+class EmailNoticeSendRequest(BaseModel):
+    to_email: str
+    template_name: str
+    language: str = "en"
+    params: Dict[str, Any]
+
+
+_EMAIL_TEMPLATES = {
+    "govops_status_update_email": {
+        "en": {
+            "subject": "Update on your request {request_id}",
+            "body": "Your request {request_id} now has the status: {status}. If you have questions, or no longer want these e-mails, please contact your office. This message was sent automatically; please do not reply to it."
+        },
+        "mr": {
+            "subject": "तुमच्या विनंती {request_id} बद्दल माहिती",
+            "body": "तुमच्या विनंती {request_id} ची स्थिती आता: {status}. काही प्रश्न असल्यास, किंवा हे ई-मेल नको असल्यास, कृपया तुमच्या कार्यालयाशी संपर्क साधा. हा संदेश आपोआप पाठवला आहे; कृपया याला उत्तर देऊ नका."
+        },
+        "hi": {
+            "subject": "आपके अनुरोध {request_id} के बारे में जानकारी",
+            "body": "आपके अनुरोध {request_id} की स्थिति अब: {status}. कोई प्रश्न हो, या ये ई-मेल नहीं चाहिए हों, तो कृपया अपने कार्यालय से संपर्क करें। यह संदेश अपने आप भेजा गया है; कृपया इसका उत्तर न दें।"
+        }
+    }
+}
+
+
+@router.post("/api/ecosystem/whatsapp/send-template")
+async def ecosystem_send_whatsapp_template(
+    req: WhatsAppTemplateSendRequest,
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+):
+    """
+    Dedicated server-to-server endpoint for AIAIC / Gov Ops to dispatch WhatsApp templates.
+    Protected by X-API-Key and deduplicated via Idempotency-Key.
+    """
+    if not _verify_aiaic_key(x_api_key):
+        raise HTTPException(status_code=401, detail="Unauthorized: Invalid or missing X-API-Key")
+
+    now_iso = datetime.utcnow().isoformat() + "Z"
+
+    # Idempotency deduplication check
+    if idempotency_key:
+        cached = _IDEMPOTENCY_CACHE.get(idempotency_key)
+        if cached:
+            logger.info("Idempotent replay detected for key=%s", idempotency_key)
+            return cached
+
+    from app.executors.meta_whatsapp_executor import meta_whatsapp_executor
+    res = meta_whatsapp_executor.send_template_message(
+        to_phone=req.to_phone.strip(),
+        template_name=req.template_name.strip(),
+        language_code=req.language_code.strip(),
+        components=req.components,
+        user_id=None
+    )
+
+    if res.get("status") == "error":
+        err_msg = res.get("error") or res.get("raw_error") or "Failed to dispatch WhatsApp template"
+        code = res.get("meta_code")
+        status_code = 404 if code in (100, 132001) else 400
+        raise HTTPException(status_code=status_code, detail=f"Meta Dispatch Error: {err_msg}")
+
+    wamid = res.get("message_id")
+    response_payload = {
+        "status": "success",
+        "message_id": wamid,
+        "recipient": req.to_phone.strip(),
+        "timestamp": now_iso
+    }
+
+    # Store in MongoDB / memory for status lookup
+    db = _get_ecosystem_db()
+    if db is not None:
+        try:
+            db["ecosystem_dispatches"].insert_one({
+                "channel": "whatsapp",
+                "message_id": wamid,
+                "recipient": req.to_phone.strip(),
+                "template_name": req.template_name,
+                "language_code": req.language_code,
+                "delivery_status": "sent",
+                "idempotency_key": idempotency_key,
+                "created_at": datetime.utcnow(),
+                "updated_at": now_iso
+            })
+        except Exception as exc:
+            logger.warning("Failed storing ecosystem dispatch in DB: %s", exc)
+
+    if idempotency_key:
+        _IDEMPOTENCY_CACHE[idempotency_key] = response_payload
+
+    return response_payload
+
+
+@router.get("/api/ecosystem/whatsapp/status/{wamid}")
+async def ecosystem_get_whatsapp_status(
+    wamid: str,
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key")
+):
+    """
+    Fallback status inquiry for an in-flight WhatsApp message ID.
+    """
+    if not _verify_aiaic_key(x_api_key):
+        raise HTTPException(status_code=401, detail="Unauthorized: Invalid or missing X-API-Key")
+
+    db = _get_ecosystem_db()
+    delivery_status = "sent"
+    updated_at = datetime.utcnow().isoformat() + "Z"
+    error_obj = None
+
+    if db is not None:
+        doc = db["ecosystem_dispatches"].find_one({"message_id": wamid, "channel": "whatsapp"})
+        if doc:
+            delivery_status = doc.get("delivery_status", "sent")
+            updated_at = doc.get("updated_at") or updated_at
+            error_obj = doc.get("error")
+        else:
+            event_doc = db["whatsapp_webhook_events"].find_one({"event.entry.changes.value.statuses.id": wamid})
+            if event_doc:
+                delivery_status = "delivered"
+
+    return {
+        "status": "success",
+        "channel": "whatsapp",
+        "message_id": wamid,
+        "delivery_status": delivery_status,
+        "timestamp": updated_at,
+        "error": error_obj
+    }
+
+
+@router.post("/api/ecosystem/email/send-notice")
+async def ecosystem_send_email_notice(
+    req: EmailNoticeSendRequest,
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+):
+    """
+    Dedicated server-to-server endpoint for AIAIC / Gov Ops to dispatch templated email notices.
+    """
+    if not _verify_aiaic_key(x_api_key):
+        raise HTTPException(status_code=401, detail="Unauthorized: Invalid or missing X-API-Key")
+
+    now_iso = datetime.utcnow().isoformat() + "Z"
+
+    if idempotency_key:
+        cached = _IDEMPOTENCY_CACHE.get(idempotency_key)
+        if cached:
+            return cached
+
+    tmpl_dict = _EMAIL_TEMPLATES.get(req.template_name)
+    if not tmpl_dict:
+        raise HTTPException(status_code=400, detail=f"Unsupported email template: {req.template_name}")
+
+    lang = req.language if req.language in tmpl_dict else "en"
+    tmpl = tmpl_dict[lang]
+
+    try:
+        subj = tmpl["subject"].format(**req.params)
+        body = tmpl["body"].format(**req.params)
+    except KeyError as k_err:
+        raise HTTPException(status_code=400, detail=f"Missing required template parameter: {k_err}")
+
+    from app.executors.email_executor import email_executor
+    res = email_executor.send_email(
+        to_email=req.to_email.strip(),
+        subject=subj,
+        message=body,
+        is_system_action=True
+    )
+
+    if res.get("status") == "error":
+        raise HTTPException(status_code=502, detail=f"Email Delivery Error: {res.get('error')}")
+
+    message_id = f"email_{uuid.uuid4().hex[:16]}"
+    response_payload = {
+        "status": "success",
+        "message_id": message_id,
+        "timestamp": now_iso
+    }
+
+    db = _get_ecosystem_db()
+    if db is not None:
+        try:
+            db["ecosystem_dispatches"].insert_one({
+                "channel": "email",
+                "message_id": message_id,
+                "recipient": req.to_email.strip(),
+                "template_name": req.template_name,
+                "language": lang,
+                "delivery_status": "delivered",
+                "idempotency_key": idempotency_key,
+                "created_at": datetime.utcnow(),
+                "updated_at": now_iso
+            })
+        except Exception as exc:
+            logger.warning("Failed storing email dispatch in DB: %s", exc)
+
+    if idempotency_key:
+        _IDEMPOTENCY_CACHE[idempotency_key] = response_payload
+
+    return response_payload
+
+
+@router.get("/api/ecosystem/email/status/{message_id}")
+async def ecosystem_get_email_status(
+    message_id: str,
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key")
+):
+    """
+    Status inquiry for a dispatched email notice.
+    """
+    if not _verify_aiaic_key(x_api_key):
+        raise HTTPException(status_code=401, detail="Unauthorized: Invalid or missing X-API-Key")
+
+    db = _get_ecosystem_db()
+    delivery_status = "delivered"
+    updated_at = datetime.utcnow().isoformat() + "Z"
+    bounce_type = None
+
+    if db is not None:
+        doc = db["ecosystem_dispatches"].find_one({"message_id": message_id, "channel": "email"})
+        if doc:
+            delivery_status = doc.get("delivery_status", "delivered")
+            updated_at = doc.get("updated_at") or updated_at
+            bounce_type = doc.get("bounce_type")
+
+    return {
+        "status": "success",
+        "channel": "email",
+        "message_id": message_id,
+        "delivery_status": delivery_status,
+        "bounce_type": bounce_type,
+        "timestamp": updated_at,
+        "error": None
+    }
+

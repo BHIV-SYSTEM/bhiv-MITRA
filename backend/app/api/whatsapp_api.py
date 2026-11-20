@@ -729,6 +729,51 @@ async def receive_meta_webhook_event(request: Request):
         except Exception:
             pass
 
+        # Forward status callbacks to AIAIC Gov Ops if configured
+        try:
+            aiaic_url = os.getenv("AIAIC_WHATSAPP_WEBHOOK_URL")
+            aiaic_secret = os.getenv("AIAIC_WEBHOOK_SECRET")
+            if aiaic_url and aiaic_secret:
+                for entry in body.get("entry", []):
+                    for change in entry.get("changes", []):
+                        val = change.get("value", {})
+                        for st in val.get("statuses", []):
+                            wamid = st.get("id")
+                            status = st.get("status")
+                            if wamid and status:
+                                err_obj = None
+                                if st.get("errors"):
+                                    err_raw = st["errors"][0]
+                                    err_obj = {"code": err_raw.get("code"), "title": err_raw.get("title")}
+                                
+                                now_ts = str(int(time.time()))
+                                cb_payload = {
+                                    "message_id": wamid,
+                                    "status": status,
+                                    "timestamp": datetime.utcnow().isoformat() + "Z"
+                                }
+                                if err_obj:
+                                    cb_payload["error"] = err_obj
+                                
+                                raw_body_bytes = json.dumps(cb_payload, separators=(',', ':')).encode('utf-8')
+                                sig_digest = hmac.new(
+                                    aiaic_secret.encode('utf-8'),
+                                    f"{now_ts}.".encode('utf-8') + raw_body_bytes,
+                                    hashlib.sha256
+                                ).hexdigest()
+                                
+                                headers = {
+                                    "Content-Type": "application/json",
+                                    "X-MITRA-Timestamp": now_ts,
+                                    "X-MITRA-Signature": f"sha256={sig_digest}"
+                                }
+                                import httpx
+                                async with httpx.AsyncClient(timeout=5.0) as client:
+                                    await client.post(aiaic_url, content=raw_body_bytes, headers=headers)
+                                logger.info(f"Forwarded delivery status to AIAIC webhook: wamid={wamid}, status={status}")
+        except Exception as fwd_exc:
+            logger.warning(f"Error forwarding webhook event to AIAIC: {fwd_exc}")
+
         return JSONResponse(content={"status": "EVENT_RECEIVED"}, status_code=200)
     except Exception as e:
         logger.error(f"Error parsing Meta webhook payload: {e}")
