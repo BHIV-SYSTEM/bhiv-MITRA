@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: mitra
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - backend-pvc.yaml
+  - backend-deployment.yaml
+  - backend-service.yaml
+  - frontend-deployment.yaml
+  - frontend-service.yaml
+  - ingress.yaml
+# secret.example.yaml is intentionally excluded. Create mitra-backend-secrets
+# securely before applying the workloads.

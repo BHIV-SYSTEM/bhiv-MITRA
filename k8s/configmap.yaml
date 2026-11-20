@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mitra-backend-config
+  namespace: mitra
+data:
+  ENV: "production"
+  ENVIRONMENT: "production"
+  BASE_URL: "https://mitra.blackholeinfiverse.com"
+  FRONTEND_URL: "https://mitra.blackholeinfiverse.com"
+  DATABASE_NAME: "mitra_db"
+  LOG_LEVEL: "INFO"
+  LOG_FILE: "logs/app.log"
+  AUTH_STORE_MODE: "auto"
+  REMINDER_SCHEDULER_ENABLED: "0"
+  # The React frontend API URL is compiled into its image by the existing CI workflow:
+  # https://mitra.blackholeinfiverse.com/api
