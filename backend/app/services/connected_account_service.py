@@ -43,13 +43,23 @@ class ConnectedAccountService:
         
         if include_tokens:
             try:
-                sanitized["access_token"] = decrypt_secret(encrypted_access) if encrypted_access else None
+                if encrypted_access and not is_encrypted(encrypted_access):
+                    sanitized["access_token"] = encrypted_access
+                elif encrypted_access:
+                    sanitized["access_token"] = decrypt_secret(encrypted_access)
+                else:
+                    sanitized["access_token"] = None
             except Exception:
-                sanitized["access_token"] = None
+                sanitized["access_token"] = encrypted_access if (encrypted_access and not is_encrypted(encrypted_access)) else None
             try:
-                sanitized["refresh_token"] = decrypt_secret(encrypted_refresh) if encrypted_refresh else None
+                if encrypted_refresh and not is_encrypted(encrypted_refresh):
+                    sanitized["refresh_token"] = encrypted_refresh
+                elif encrypted_refresh:
+                    sanitized["refresh_token"] = decrypt_secret(encrypted_refresh)
+                else:
+                    sanitized["refresh_token"] = None
             except Exception:
-                sanitized["refresh_token"] = None
+                sanitized["refresh_token"] = encrypted_refresh if (encrypted_refresh and not is_encrypted(encrypted_refresh)) else None
         else:
             sanitized.pop("access_token", None)
             sanitized.pop("refresh_token", None)

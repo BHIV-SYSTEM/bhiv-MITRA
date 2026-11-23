@@ -187,7 +187,7 @@ class PendingActionService:
         """
         clean_uid = str(user_id).strip()
         now_iso = datetime.utcnow().isoformat()
-        stale_cutoff = (datetime.utcnow() - timedelta(seconds=30)).isoformat()
+        stale_cutoff = (datetime.utcnow() - timedelta(seconds=10)).isoformat()
 
         # Check existing state first to give exact error category
         existing = self.get_pending_action(pending_action_id, clean_uid)

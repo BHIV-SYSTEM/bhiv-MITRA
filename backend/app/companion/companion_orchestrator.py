@@ -380,8 +380,18 @@ class CompanionOrchestrator:
         pact_match = re.search(r'\b(pact_[a-f0-9]{12,32})\b', msg_clean, re.IGNORECASE)
         specific_pact_id = pact_match.group(1) if pact_match else None
 
-        is_confirm_phrase = bool(re.match(r'^(?:yes|confirm|send|send it|confirm send|proceed|yes send it|ok send it|yes please|confirm it)\b', msg_lower)) or bool(specific_pact_id and "confirm" in msg_lower)
-        is_cancel_phrase = bool(re.match(r'^(?:no|cancel|don\'t send|abort|stop)\b', msg_lower)) or bool(specific_pact_id and "cancel" in msg_lower)
+        # Explicitly distinguish between confirmation of an existing card vs a new outbound command
+        is_new_command = bool(re.search(r'\b(?:whatsapp|email|sms|mail|msg|message)\b|\bto\s+[\+\d]', msg_lower))
+
+        is_confirm_phrase = (
+            bool(re.match(r'^(?:yes|confirm|send it|confirm send|proceed|yes send it|ok send it|yes please|confirm it)\b', msg_lower))
+            or (bool(re.match(r'^send\b', msg_lower)) and not is_new_command)
+            or bool(specific_pact_id and "confirm" in msg_lower)
+        )
+        is_cancel_phrase = (
+            bool(re.match(r'^(?:no|cancel|don\'t send|abort|stop)\b', msg_lower))
+            or bool(specific_pact_id and "cancel" in msg_lower)
+        )
 
         if is_confirm_phrase or is_cancel_phrase:
             pending_act = (
