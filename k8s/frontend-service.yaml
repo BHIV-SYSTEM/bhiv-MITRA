@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mitra-frontend
+  namespace: mitra
+  labels:
+    app.kubernetes.io/name: mitra-frontend
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: mitra-frontend
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+      protocol: TCP
