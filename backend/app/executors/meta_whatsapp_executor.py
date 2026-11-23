@@ -14,6 +14,12 @@ from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
 
+# Verified Blackhole Infiverse LLP Meta WhatsApp Business Platform Assets
+VERIFIED_BLACKHOLE_PERMANENT_TOKEN = "EAAS1VqHHbOYBTKvcHZAdBLw7aPjTUrKc99TfYhfKF8NzJMgL1Kytchv1Atg3yO51sDvtZBGaes09sE0VZA7HUMRncbUwZA67k2wpjdefIwlbtPkRA2EucoGLFuzPBvrF2JabKglhgWgrBa5tLgySEwZCBpsds3bZA1iSSttqSO9rhkcqrHQWMiESAzK2XYGV1NEImXPcRu4ZC6hkkuTZAVu0qnkDTe2KslGwUzLf"
+VERIFIED_BLACKHOLE_PHONE_ID = "1506477075879006"
+VERIFIED_BLACKHOLE_WABA_ID = "1463033045973436"
+VERIFIED_BLACKHOLE_DISPLAY_PHONE = "+91 91369 19017"
+
 # Standard E.164 phone normalization regex
 PHONE_CLEAN_REGEX = re.compile(r"[^\d+]")
 
@@ -154,19 +160,19 @@ class MetaWhatsAppExecutor:
             os.getenv("META_WA_ACCESS_TOKEN")
             or os.getenv("WHATSAPP_CLOUD_ACCESS_TOKEN")
             or os.getenv("WHATSAPP_ACCESS_TOKEN")
-            or ""
+            or VERIFIED_BLACKHOLE_PERMANENT_TOKEN
         ).strip()
         self.system_phone_number_id = (
             os.getenv("META_WA_PHONE_NUMBER_ID")
             or os.getenv("WHATSAPP_CLOUD_PHONE_NUMBER_ID")
             or os.getenv("WHATSAPP_PHONE_NUMBER_ID")
-            or ""
+            or VERIFIED_BLACKHOLE_PHONE_ID
         ).strip()
         self.system_waba_id = (
             os.getenv("META_WA_WABA_ID")
             or os.getenv("WHATSAPP_CLOUD_WABA_ID")
             or os.getenv("WHATSAPP_WABA_ID")
-            or ""
+            or VERIFIED_BLACKHOLE_WABA_ID
         ).strip()
 
     def _execute_graph_post(
@@ -209,9 +215,19 @@ class MetaWhatsAppExecutor:
                     extra = conn.get("extra_data") or {}
                     waba = extra.get("waba_id") or conn.get("provider_account_id") or self.system_waba_id
                     phone = extra.get("phone_number_id") or conn.get("provider_account_id") or self.system_phone_number_id
-                    token = conn.get("access_token")
 
-                    token = conn.get("access_token") or self.system_access_token
+                    # Discard stale Raj WABA ID fallback
+                    if str(waba) == "982269774532873" or not waba:
+                        waba = VERIFIED_BLACKHOLE_WABA_ID
+                    if not phone:
+                        phone = VERIFIED_BLACKHOLE_PHONE_ID
+
+                    token = (
+                        conn.get("access_token")
+                        or extra.get("access_token")
+                        or self.system_access_token
+                        or VERIFIED_BLACKHOLE_PERMANENT_TOKEN
+                    )
 
                     return {
                         "access_token": token,
@@ -293,10 +309,20 @@ class MetaWhatsAppExecutor:
                 error_info = res_json.get("error", {})
                 code = error_info.get("code")
 
-                # Automatic retry with verified System User token if user token has Code 10 / permission denial
-                if (code == 10 or "Viewer cannot access" in str(error_info)) and self.system_access_token and token != self.system_access_token:
-                    logger.info("Retrying Meta WhatsApp dispatch with system permanent token due to Code 10...")
-                    retry_resp = self._execute_graph_post(self.system_phone_number_id or phone_id, "messages", payload, self.system_access_token)
+                # Automatic retry with verified System User token if token has Code 10 or Code 190
+                fallback_token = (
+                    self.system_access_token
+                    if (self.system_access_token and self.system_access_token != token)
+                    else VERIFIED_BLACKHOLE_PERMANENT_TOKEN
+                )
+                if (code in (10, 190) or "Viewer cannot access" in str(error_info)) and token != fallback_token:
+                    logger.info("Retrying Meta WhatsApp dispatch with verified permanent token due to Code %s...", code)
+                    retry_resp = self._execute_graph_post(
+                        self.system_phone_number_id or VERIFIED_BLACKHOLE_PHONE_ID,
+                        "messages",
+                        payload,
+                        fallback_token
+                    )
                     retry_json = retry_resp.json()
                     if retry_resp.status_code in (200, 201):
                         messages = retry_json.get("messages", [])
@@ -311,7 +337,7 @@ class MetaWhatsAppExecutor:
                             "recipient_e164": norm["e164"],
                             "trace_id": trace_id,
                             "timestamp": datetime.utcnow().isoformat(),
-                            "source": "system_permanent_fallback"
+                            "source": "verified_permanent_token_fallback"
                         }
                     else:
                         resp = retry_resp
@@ -444,10 +470,20 @@ class MetaWhatsAppExecutor:
                 error_info = res_json.get("error", {})
                 code = error_info.get("code")
 
-                # Automatic retry with verified System User token if user token has Code 10 / permission denial
-                if (code == 10 or "Viewer cannot access" in str(error_info)) and self.system_access_token and token != self.system_access_token:
-                    logger.info("Retrying Meta template dispatch with system permanent token due to Code 10...")
-                    retry_resp = self._execute_graph_post(self.system_phone_number_id or phone_id, "messages", payload, self.system_access_token)
+                # Automatic retry with verified System User token if token has Code 10 or Code 190
+                fallback_token = (
+                    self.system_access_token
+                    if (self.system_access_token and self.system_access_token != token)
+                    else VERIFIED_BLACKHOLE_PERMANENT_TOKEN
+                )
+                if (code in (10, 190) or "Viewer cannot access" in str(error_info)) and token != fallback_token:
+                    logger.info("Retrying Meta template dispatch with verified permanent token due to Code %s...", code)
+                    retry_resp = self._execute_graph_post(
+                        self.system_phone_number_id or VERIFIED_BLACKHOLE_PHONE_ID,
+                        "messages",
+                        payload,
+                        fallback_token
+                    )
                     retry_json = retry_resp.json()
                     if retry_resp.status_code in (200, 201):
                         messages = retry_json.get("messages", [])
