@@ -195,6 +195,7 @@ class MetaWhatsAppExecutor:
     def get_credentials(self, user_id: Optional[str] = None) -> Dict[str, str]:
         """
         Retrieves credentials prioritizing connected user account, falling back to system environment.
+        When target is the verified Blackhole Infiverse WABA/Phone, prioritizes verified system token.
         """
         if user_id and user_id.lower() not in ("user_default", "default", "none"):
             try:
@@ -206,10 +207,21 @@ class MetaWhatsAppExecutor:
                 )
                 if conn and conn.get("status") in ("connected", "active"):
                     extra = conn.get("extra_data") or {}
+                    waba = extra.get("waba_id") or conn.get("provider_account_id") or self.system_waba_id
+                    phone = extra.get("phone_number_id") or conn.get("provider_account_id") or self.system_phone_number_id
+                    token = conn.get("access_token")
+
+                    # If targeting the verified Blackhole Infiverse WABA/Phone, use system permanent token
+                    # because personal Facebook OAuth tokens lack permissions for owning company assets
+                    if (waba == self.system_waba_id or phone == self.system_phone_number_id) and self.system_access_token:
+                        token = self.system_access_token
+                    else:
+                        token = token or self.system_access_token
+
                     return {
-                        "access_token": conn.get("access_token") or self.system_access_token,
-                        "phone_number_id": extra.get("phone_number_id") or conn.get("provider_account_id") or self.system_phone_number_id,
-                        "waba_id": extra.get("waba_id") or self.system_waba_id,
+                        "access_token": token,
+                        "phone_number_id": phone,
+                        "waba_id": waba,
                         "source": "user_connected_account"
                     }
             except Exception as e:
@@ -284,8 +296,35 @@ class MetaWhatsAppExecutor:
                 }
             else:
                 error_info = res_json.get("error", {})
-                raw_msg = error_info.get("message") or f"Meta Cloud API returned HTTP {resp.status_code}"
                 code = error_info.get("code")
+
+                # Automatic retry with verified System User token if user token has Code 10 / permission denial
+                if (code == 10 or "Viewer cannot access" in str(error_info)) and self.system_access_token and token != self.system_access_token:
+                    logger.info("Retrying Meta WhatsApp dispatch with system permanent token due to Code 10...")
+                    retry_resp = self._execute_graph_post(self.system_phone_number_id or phone_id, "messages", payload, self.system_access_token)
+                    retry_json = retry_resp.json()
+                    if retry_resp.status_code in (200, 201):
+                        messages = retry_json.get("messages", [])
+                        wamid = messages[0].get("id") if messages else None
+                        return {
+                            "status": "success",
+                            "delivery_state": "pending",
+                            "platform": "whatsapp",
+                            "mode": "business",
+                            "message_id": wamid,
+                            "recipient": norm["formatted"],
+                            "recipient_e164": norm["e164"],
+                            "trace_id": trace_id,
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "source": "system_permanent_fallback"
+                        }
+                    else:
+                        resp = retry_resp
+                        res_json = retry_json
+                        error_info = res_json.get("error", {})
+                        code = error_info.get("code")
+
+                raw_msg = error_info.get("message") or f"Meta Cloud API returned HTTP {resp.status_code}"
                 error_subcode = error_info.get("error_subcode")
                 fbtrace_id = error_info.get("fbtrace_id")
                 
@@ -296,6 +335,13 @@ class MetaWhatsAppExecutor:
                         "Meta WhatsApp Cloud API Authentication Error (Code 190): "
                         "Access token is expired, invalid, or revoked. "
                         "Please update META_WA_ACCESS_TOKEN in backend/.env or reconnect your Meta WhatsApp Business account in Settings."
+                    )
+                elif code == 10:
+                    err_code = "META_PERMISSION_DENIED_10"
+                    user_friendly_msg = (
+                        "Meta WABA Access Denied (Code 10): "
+                        "The connected user token lacks permissions for WABA 1463033045973436. "
+                        "Please open Service Connections in Settings, click 'Disconnect' to clear stale tokens, and connect the verified Blackhole account."
                     )
                 elif code == 131047:
                     err_code = "META_24H_WINDOW_EXPIRED"
@@ -402,10 +448,41 @@ class MetaWhatsAppExecutor:
             else:
                 error_info = res_json.get("error", {})
                 code = error_info.get("code")
+
+                # Automatic retry with verified System User token if user token has Code 10 / permission denial
+                if (code == 10 or "Viewer cannot access" in str(error_info)) and self.system_access_token and token != self.system_access_token:
+                    logger.info("Retrying Meta template dispatch with system permanent token due to Code 10...")
+                    retry_resp = self._execute_graph_post(self.system_phone_number_id or phone_id, "messages", payload, self.system_access_token)
+                    retry_json = retry_resp.json()
+                    if retry_resp.status_code in (200, 201):
+                        messages = retry_json.get("messages", [])
+                        wamid = messages[0].get("id") if messages else None
+                        return {
+                            "status": "success",
+                            "delivery_state": "pending",
+                            "mode": "business",
+                            "message_id": wamid,
+                            "recipient": norm["formatted"],
+                            "template": template_name,
+                            "trace_id": trace_id
+                        }
+                    else:
+                        resp = retry_resp
+                        res_json = retry_json
+                        error_info = res_json.get("error", {})
+                        code = error_info.get("code")
+
                 raw_msg = error_info.get("message") or "Meta template dispatch failed"
                 if code in (190, 102):
                     err_code = "META_AUTH_ERROR_190"
                     user_msg = "Meta WhatsApp Cloud API Authentication Error (Code 190): Access token expired or invalid."
+                elif code == 10:
+                    err_code = "META_PERMISSION_DENIED_10"
+                    user_msg = (
+                        "Meta WABA Access Denied (Code 10): "
+                        "The connected user token lacks permissions for WABA 1463033045973436. "
+                        "Please open Service Connections in Settings, click 'Disconnect' to clear stale tokens, and connect the verified Blackhole account."
+                    )
                 else:
                     err_code = f"META_API_ERROR_{code}" if code else "META_API_ERROR"
                     user_msg = raw_msg
