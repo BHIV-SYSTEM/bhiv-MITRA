@@ -101,6 +101,9 @@ jobs:
           if [ -n "${{ secrets.META_APP_ID }}" ]; then
             echo "META_APP_ID=${{ secrets.META_APP_ID }}" >> backend/.env
           fi
+          echo "META_WA_ACCESS_TOKEN=EAAS1VqHHbOYBTKvcHZAdBLw7aPjTUrKc99TfYhfKF8NzJMgL1Kytchv1Atg3yO51sDvtZBGaes09sE0VZA7HUMRncbUwZA67k2wpjdefIwlbtPkRA2EucoGLFuzPBvrF2JabKglhgWgrBa5tLgySEwZCBpsds3bZA1iSSttqSO9rhkcqrHQWMiESAzK2XYGV1NEImXPcRu4ZC6hkkuTZAVu0qnkDTe2KslGwUzLf" >> backend/.env
+          echo "META_WA_PHONE_NUMBER_ID=1506477075879006" >> backend/.env
+          echo "META_WA_WABA_ID=1463033045973436" >> backend/.env
 
       - name: Tar deployment files
         run: |
@@ -166,7 +169,7 @@ jobs:
             
             # Health Check - Check docker status and query frontend + backend endpoints
             echo "Waiting for services to be healthy..."
-            for i in {1..18}; do
+            for i in {1..36}; do
               if docker compose -f docker-compose.production.yml ps --filter "status=running" --filter "health=unhealthy" -q >/dev/null 2>&1; then
                 UNHEALTHY_COUNT=$(docker compose -f docker-compose.production.yml ps --filter "status=running" --filter "health=unhealthy" -q | wc -l)
                 STARTING_COUNT=$(docker compose -f docker-compose.production.yml ps --filter "status=running" --filter "health=starting" -q | wc -l)
@@ -193,7 +196,7 @@ jobs:
                 break
               fi
               
-              if [ "$i" -eq 18 ]; then
+              if [ "$i" -eq 36 ]; then
                 echo "Health check failed!"
                 docker compose -f docker-compose.production.yml ps
                 docker compose -f docker-compose.production.yml logs --tail=50
