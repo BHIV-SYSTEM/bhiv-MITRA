@@ -230,7 +230,7 @@ class ConnectedAccountService:
         deleted = False
         if db is not None:
             try:
-                res = db[self.collection_name].delete_one({"user_id": user_id, "provider": provider.lower()})
+                res = db[self.collection_name].delete_many({"user_id": user_id, "provider": provider.lower()})
                 deleted = res.deleted_count > 0
             except Exception as exc:
                 logger.error(f"Failed deleting connected account: {exc}")

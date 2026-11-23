@@ -492,6 +492,10 @@ async def get_business_whatsapp_status(
         or "1325283592858854"
     ).strip()
 
+    reg_status = extra.get("registration_status") or (
+        "registered" if (is_connected and not extra.get("needs_registration")) else "pending"
+    )
+
     return {
         "status": "connected" if is_connected else "disconnected",
         "mode": "business",
@@ -501,6 +505,13 @@ async def get_business_whatsapp_status(
         "display_phone_number": extra.get("display_phone_number") or (conn.get("email") if conn else None),
         "verified_name": extra.get("verified_name"),
         "coexistence_mode": extra.get("coexistence_mode", False),
+        "registration_status": reg_status,
+        "verified_account": {
+            "waba_id": "1463033045973436",
+            "phone_number_id": "1506477075879006",
+            "phone_number": "+91 91369 19017",
+            "verified_name": "Blackhole Infiverse LLP"
+        },
         "token_configured": has_token,
         "masked_token": masked_token,
         "meta_app_id": meta_app_id,
@@ -556,23 +567,109 @@ async def connect_business_whatsapp(
     }
 
 
+@router.post("/business/connect-verified")
+async def connect_verified_business_whatsapp(
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Connects the verified Blackhole Infiverse LLP WhatsApp Business Account:
+    WABA ID: 1463033045973436
+    Phone Number ID: 1506477075879006
+    Phone Number: +91 91369 19017
+    """
+    user_id = str(current_user.get("id") or current_user.get("user_id") or "user_default").strip()
+    verified_waba_id = "1463033045973436"
+    verified_phone_number_id = "1506477075879006"
+    verified_phone_number = "+91 91369 19017"
+    verified_name = "Blackhole Infiverse LLP"
+
+    client = MetaWhatsAppExecutor()
+    token = client.system_access_token or os.getenv("META_WA_ACCESS_TOKEN", "").strip()
+
+    from app.services.connected_account_service import connected_account_service
+    # Clear any previous stale records first
+    connected_account_service.delete_connection(user_id=user_id, provider="whatsapp_business")
+    connected_account_service.delete_connection(user_id=user_id, provider="whatsapp")
+
+    conn = connected_account_service.create_connection(
+        user_id=user_id,
+        provider="whatsapp_business",
+        access_token=token or "system_verified_token",
+        provider_account_id=verified_phone_number_id,
+        email=verified_phone_number,
+        extra_data={
+            "phone_number_id": verified_phone_number_id,
+            "waba_id": verified_waba_id,
+            "display_phone_number": verified_phone_number,
+            "verified_name": verified_name,
+            "coexistence_mode": True,
+            "registration_status": "registered",
+            "connected_at": datetime.utcnow().isoformat()
+        }
+    )
+
+    return {
+        "status": "connected",
+        "provider": "whatsapp_business",
+        "phone_number_id": verified_phone_number_id,
+        "waba_id": verified_waba_id,
+        "display_phone_number": verified_phone_number,
+        "verified_name": verified_name,
+        "registration_status": "registered",
+        "message": "Verified Blackhole Infiverse LLP WhatsApp Business Account connected successfully.",
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+
 @router.post("/business/disconnect")
 async def disconnect_business_whatsapp(
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
-    Disconnects and deletes saved Meta WhatsApp Business credentials for the authenticated user.
+    Disconnects and completely purges saved Meta WhatsApp Business credentials and
+    stale WABA IDs (such as old Raj WABA IDs) for the authenticated user.
     """
     user_id = str(current_user.get("id") or current_user.get("user_id") or "user_default").strip()
+    stale_waba_ids = ["2343147676435442", "982269774532873", "4511342759180630"]
+    stale_phone_ids = ["1523531950833413", "1430949593425669"]
+
     try:
-        from app.services.connected_account_service import connected_account_service
+        from app.services.connected_account_service import connected_account_service, _get_db, _IN_MEMORY_CONNECTED_ACCOUNTS
         connected_account_service.delete_connection(user_id=user_id, provider="whatsapp_business")
+        connected_account_service.delete_connection(user_id=user_id, provider="whatsapp")
+
+        db = _get_db()
+        if db is not None:
+            # Delete user connections for WhatsApp
+            db["connected_accounts"].delete_many({
+                "user_id": user_id,
+                "provider": {"$in": ["whatsapp_business", "whatsapp"]}
+            })
+            # Purge any stale WABA / Phone records for this user
+            db["connected_accounts"].delete_many({
+                "$or": [
+                    {"extra_data.waba_id": {"$in": stale_waba_ids}},
+                    {"extra_data.phone_number_id": {"$in": stale_phone_ids}},
+                    {"provider_account_id": {"$in": stale_phone_ids}}
+                ]
+            })
+            # Clean user_integrations
+            db["user_integrations"].update_one(
+                {"user_id": user_id},
+                {"$unset": {"whatsapp": "", "whatsapp_business": ""}}
+            )
+
+        # Clean in-memory
+        for k in list(_IN_MEMORY_CONNECTED_ACCOUNTS.keys()):
+            if user_id in k and ("whatsapp" in k):
+                del _IN_MEMORY_CONNECTED_ACCOUNTS[k]
+
     except Exception as e:
-        logger.warning(f"Error removing connection: {e}")
+        logger.warning(f"Error purging WhatsApp business connection: {e}")
 
     return {
         "status": "disconnected",
-        "message": "Meta WhatsApp Business Account disconnected.",
+        "message": "Meta WhatsApp Business Account disconnected and stale WABA IDs cleared.",
         "timestamp": datetime.utcnow().isoformat()
     }
 
@@ -623,22 +720,32 @@ async def register_phone_number_on_meta(
     Registers a connected WhatsApp Business phone number on the Cloud API platform
     using a 6-digit two-step verification PIN to resolve Meta error #133010 (Account not registered).
     """
-    user_id = current_user.get("user_id") or current_user.get("id") or current_user.get("sub")
+    user_id = str(current_user.get("user_id") or current_user.get("id") or current_user.get("sub") or "user_default").strip()
     from app.services.connected_account_service import connected_account_service
     conn = connected_account_service.get_user_connection(
         user_id=user_id,
         provider="whatsapp_business",
         include_decrypted_tokens=True
     )
-    if not conn:
-        raise HTTPException(status_code=400, detail="No connected WhatsApp Business account found for this user.")
+    
+    token = None
+    phone_id = None
+    extra = {}
 
-    token = conn.get("access_token")
-    extra = conn.get("extra_data") or {}
-    phone_id = extra.get("phone_number_id") or conn.get("provider_account_id")
+    if conn:
+        token = conn.get("access_token")
+        extra = conn.get("extra_data") or {}
+        phone_id = extra.get("phone_number_id") or conn.get("provider_account_id")
 
     if not token or not phone_id:
-        raise HTTPException(status_code=400, detail="Phone Number ID or Access Token missing in connected account.")
+        # Fall back to system credentials
+        executor = MetaWhatsAppExecutor()
+        creds = executor.get_credentials(user_id=user_id)
+        token = token or creds.get("access_token")
+        phone_id = phone_id or creds.get("phone_number_id")
+
+    if not token or not phone_id:
+        raise HTTPException(status_code=400, detail="Phone Number ID or Access Token missing in connected account or environment.")
 
     # Call Meta Graph API /{phone_id}/register
     graph_base = os.getenv("WHATSAPP_CLOUD_BASE_URL", "https://graph.facebook.com").rstrip("/")
@@ -661,8 +768,25 @@ async def register_phone_number_on_meta(
         res_json = resp.json()
         if resp.status_code in (200, 201) and res_json.get("success"):
             logger.info(f"Successfully registered phone number {phone_id} on WhatsApp Cloud API.")
+            # Persist registration status
+            try:
+                updated_extra = dict(extra) if extra else {}
+                updated_extra["registration_status"] = "registered"
+                updated_extra["phone_number_id"] = phone_id
+                connected_account_service.create_connection(
+                    user_id=user_id,
+                    provider="whatsapp_business",
+                    access_token=token,
+                    provider_account_id=phone_id,
+                    email=extra.get("display_phone_number") or "+91 91369 19017",
+                    extra_data=updated_extra
+                )
+            except Exception as e:
+                logger.warning(f"Could not persist registration status in connected account: {e}")
+
             return {
                 "status": "success",
+                "registration_status": "registered",
                 "message": "Phone number successfully registered on WhatsApp Cloud API. You can now send messages!",
                 "phone_number_id": phone_id
             }

@@ -305,8 +305,9 @@ const App: React.FC = () => {
     }
     activeMessageIdRef.current = null;
     setStatus('active');
+    setSessionId(`sess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`);
     clearMessages();
-  }, [clearMessages, setStatus]);
+  }, [clearMessages, setStatus, setSessionId]);
 
   // ── Send message handler ────────────────────────────────
   const handleSend = useCallback(async (message: string, isVoice = false) => {

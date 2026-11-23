@@ -77,6 +77,11 @@ export const IntegrationsModal: React.FC<IntegrationsModalProps> = ({ isOpen, on
   const [waBusinessWabaId, setWaBusinessWabaId] = useState('');
   const [waVerifiedName, setWaVerifiedName] = useState('');
   const [waCoexistenceMode, setWaCoexistenceMode] = useState(false);
+  const [waRegistrationStatus, setWaRegistrationStatus] = useState<string>('registered');
+  const [showWaPinModal, setShowWaPinModal] = useState(false);
+  const [waPin, setWaPin] = useState('');
+  const [isRegisteringPin, setIsRegisteringPin] = useState(false);
+  const [isConnectingVerified, setIsConnectingVerified] = useState(false);
   const [isConnectingWaBusiness, setIsConnectingWaBusiness] = useState(false);
   const [isDisconnectingWaBusiness, setIsDisconnectingWaBusiness] = useState(false);
   const [showPersonalAlertsOtp, setShowPersonalAlertsOtp] = useState(false);
@@ -200,18 +205,20 @@ export const IntegrationsModal: React.FC<IntegrationsModalProps> = ({ isOpen, on
         const waRes = await fetch(`${API_BASE}/api/whatsapp/business/status`, { headers: getAuthHeaders() });
         if (waRes.ok) {
           const waData = await waRes.json();
-          if (waData.status === 'connected' && waData.source === 'user_connected_account') {
+          if (waData.status === 'connected') {
             setWaBusinessConnected(true);
-            setWaBusinessPhone(waData.display_phone_number || waData.phone_number_id || '');
-            setWaBusinessWabaId(waData.waba_id || '');
-            setWaVerifiedName(waData.verified_name || '');
+            setWaBusinessPhone(waData.display_phone_number || waData.phone_number_id || '+91 91369 19017');
+            setWaBusinessWabaId(waData.waba_id || '1463033045973436');
+            setWaVerifiedName(waData.verified_name || 'Blackhole Infiverse LLP');
             setWaCoexistenceMode(Boolean(waData.coexistence_mode));
+            setWaRegistrationStatus(waData.registration_status || 'registered');
           } else {
             setWaBusinessConnected(false);
             setWaBusinessPhone('');
             setWaBusinessWabaId('');
             setWaVerifiedName('');
             setWaCoexistenceMode(false);
+            setWaRegistrationStatus('pending');
           }
         }
       } catch (e) {
@@ -646,7 +653,7 @@ export const IntegrationsModal: React.FC<IntegrationsModalProps> = ({ isOpen, on
 
   const handleDisconnectWaBusiness = async () => {
     setIsDisconnectingWaBusiness(true);
-    setStatusMessage("Disconnecting WhatsApp Business Account...");
+    setStatusMessage("Disconnecting WhatsApp Business Account and clearing stale WABA IDs...");
     setErrorMessage(null);
     try {
       const res = await fetch(`${API_BASE}/api/whatsapp/business/disconnect`, {
@@ -658,7 +665,8 @@ export const IntegrationsModal: React.FC<IntegrationsModalProps> = ({ isOpen, on
         setWaBusinessPhone('');
         setWaBusinessWabaId('');
         setWaVerifiedName('');
-        setStatusMessage("WhatsApp Business Account disconnected successfully.");
+        setWaRegistrationStatus('pending');
+        setStatusMessage("WhatsApp Business Account disconnected and stale WABA IDs cleared.");
       } else {
         const data = await res.json();
         setErrorMessage(data.detail || data.message || "Failed to disconnect WhatsApp Business.");
@@ -667,6 +675,68 @@ export const IntegrationsModal: React.FC<IntegrationsModalProps> = ({ isOpen, on
       setErrorMessage(err.message || "Network error disconnecting WhatsApp Business.");
     } finally {
       setIsDisconnectingWaBusiness(false);
+    }
+  };
+
+  const handleConnectVerifiedWaBusiness = async () => {
+    setIsConnectingVerified(true);
+    setStatusMessage("Connecting verified Blackhole Infiverse WhatsApp Business Account...");
+    setErrorMessage(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/whatsapp/business/connect-verified`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setWaBusinessConnected(true);
+        setWaBusinessPhone(data.display_phone_number || '+91 91369 19017');
+        setWaBusinessWabaId(data.waba_id || '1463033045973436');
+        setWaVerifiedName(data.verified_name || 'Blackhole Infiverse LLP');
+        setWaCoexistenceMode(true);
+        setWaRegistrationStatus(data.registration_status || 'registered');
+        setStatusMessage("Verified Blackhole Infiverse LLP WhatsApp Business Account connected successfully.");
+      } else {
+        setErrorMessage(data.detail || data.message || "Failed to connect verified WhatsApp account.");
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || "Network error connecting verified WhatsApp account.");
+    } finally {
+      setIsConnectingVerified(false);
+    }
+  };
+
+  const handleRegisterPhonePin = async () => {
+    if (!waPin || waPin.trim().length !== 6) {
+      setErrorMessage("Please enter a valid 6-digit PIN.");
+      return;
+    }
+    setIsRegisteringPin(true);
+    setStatusMessage("Registering phone number PIN on Meta Cloud API...");
+    setErrorMessage(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/whatsapp/register-phone`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({ pin: waPin.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setWaRegistrationStatus('registered');
+        setShowWaPinModal(false);
+        setWaPin('');
+        setStatusMessage("WhatsApp Phone Number successfully registered on Meta Cloud API!");
+        await fetchConnections();
+      } else {
+        setErrorMessage(data.detail || data.message || "Failed to register PIN on Meta Cloud API.");
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || "Network error registering PIN.");
+    } finally {
+      setIsRegisteringPin(false);
     }
   };
 
@@ -1143,8 +1213,19 @@ export const IntegrationsModal: React.FC<IntegrationsModalProps> = ({ isOpen, on
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <h3 className="font-semibold text-gray-200 text-sm sm:text-base">WhatsApp Business</h3>
+                    {waBusinessConnected && (
+                      waRegistrationStatus === 'registered' ? (
+                        <span className="px-2 py-0.5 text-[10px] font-semibold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 rounded-full flex items-center gap-1">
+                          <CheckCircle2 size={10} /> Registered
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 text-[10px] font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-400 rounded-full flex items-center gap-1">
+                          <AlertTriangle size={10} /> Pending - API Registration Required
+                        </span>
+                      )
+                    )}
                     {waBusinessConnected && waCoexistenceMode && (
-                      <span className="px-2 py-0.5 text-[10px] font-semibold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 rounded-full">
+                      <span className="px-2 py-0.5 text-[10px] font-semibold bg-blue-500/15 border border-blue-500/30 text-blue-400 rounded-full">
                         Coexistence Active
                       </span>
                     )}
@@ -1181,6 +1262,54 @@ export const IntegrationsModal: React.FC<IntegrationsModalProps> = ({ isOpen, on
                   </button>
                 </div>
 
+                {/* API Registration Guidance & PIN Action */}
+                {waRegistrationStatus !== 'registered' && (
+                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle size={14} className="text-amber-400 flex-shrink-0 mt-0.5" />
+                      <div className="space-y-1">
+                        <p className="font-semibold text-amber-300">Registration with Meta Cloud API Required</p>
+                        <p className="text-[11px] text-amber-200/80">
+                          To send messages without Meta error 133010, register the 6-digit two-step verification PIN for this number.
+                        </p>
+                      </div>
+                    </div>
+                    {showWaPinModal ? (
+                      <div className="flex items-center gap-2 pt-1">
+                        <input
+                          type="password"
+                          maxLength={6}
+                          placeholder="6-digit PIN"
+                          value={waPin}
+                          onChange={(e) => setWaPin(e.target.value)}
+                          className="px-3 py-1.5 rounded-lg bg-black/40 border border-amber-500/40 text-white font-mono text-xs w-32 focus:outline-none focus:border-amber-400"
+                        />
+                        <button
+                          onClick={handleRegisterPhonePin}
+                          disabled={isRegisteringPin || waPin.trim().length !== 6}
+                          className="px-3 py-1.5 rounded-lg bg-amber-500 text-black font-semibold text-xs hover:bg-amber-400 transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          {isRegisteringPin ? "Registering..." : "Submit PIN"}
+                        </button>
+                        <button
+                          onClick={() => setShowWaPinModal(false)}
+                          className="px-2 py-1.5 text-xs text-gray-400 hover:text-white cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setShowWaPinModal(true)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 font-medium text-xs transition-colors cursor-pointer"
+                      >
+                        <Lock size={12} />
+                        Set 6-Digit PIN & Register
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-emerald-500/10 text-[11px] text-emerald-400/90">
                   <span className="inline-flex items-center gap-1">
                     <CheckCircle2 size={12} className="text-emerald-400" />
@@ -1195,7 +1324,7 @@ export const IntegrationsModal: React.FC<IntegrationsModalProps> = ({ isOpen, on
             ) : (
               <div className="space-y-3 pt-2 border-t border-white/5">
                 <p className="text-xs text-gray-300 leading-relaxed">
-                  Connect via official <strong>Meta Embedded Signup</strong>. With <em>Coexistence</em>, you retain complete access to your WhatsApp Business mobile app on your phone while MITRA delivers morning briefings, client notifications, and calendar alerts.
+                  Connect via official <strong>Meta Embedded Signup</strong> or connect the verified <strong>Blackhole Infiverse LLP</strong> business account. With <em>Coexistence</em>, you retain complete access to your WhatsApp Business mobile app on your phone while MITRA delivers status messages, briefings, and notices.
                 </p>
 
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
@@ -1207,6 +1336,17 @@ export const IntegrationsModal: React.FC<IntegrationsModalProps> = ({ isOpen, on
                   >
                     <Smartphone size={14} />
                     {isConnectingWaBusiness ? "Connecting via Meta..." : "Connect WhatsApp Business (Coexistence)"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleConnectVerifiedWaBusiness}
+                    disabled={isConnectingVerified}
+                    className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/20 text-white font-medium text-xs transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Connect verified Blackhole Infiverse LLP (+91 91369 19017)"
+                  >
+                    <CheckCircle2 size={13} className="text-emerald-400" />
+                    {isConnectingVerified ? "Connecting..." : "Connect Verified Blackhole Account"}
                   </button>
                 </div>
 

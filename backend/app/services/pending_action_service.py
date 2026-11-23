@@ -187,6 +187,7 @@ class PendingActionService:
         """
         clean_uid = str(user_id).strip()
         now_iso = datetime.utcnow().isoformat()
+        stale_cutoff = (datetime.utcnow() - timedelta(seconds=30)).isoformat()
 
         # Check existing state first to give exact error category
         existing = self.get_pending_action(pending_action_id, clean_uid)
@@ -199,13 +200,16 @@ class PendingActionService:
         if existing.status in ("EXECUTED", "CONFIRMED"):
             return existing, "ACTION_ALREADY_EXECUTED"
         if existing.status == "CONFIRMING":
-            return None, "CONCURRENT_EXECUTION_BLOCKED"
+            # Check if previous confirmation attempt locked recently (< 30s) or is stale
+            confirmed_at = getattr(existing, "confirmed_at", None) or existing.created_at
+            if confirmed_at and confirmed_at > stale_cutoff:
+                return None, "CONCURRENT_EXECUTION_BLOCKED"
         if existing.status == "EXPIRED" or existing.expires_at <= now_iso:
             # Mark expired if not already marked
             self._update_status(pending_action_id, clean_uid, "EXPIRED")
             return None, "ACTION_EXPIRED"
 
-        # Attempt atomic transition PENDING -> CONFIRMING
+        # Attempt atomic transition (PENDING, FAILED, or stale CONFIRMING -> CONFIRMING)
         db = _get_db()
         if db is not None:
             try:
@@ -213,8 +217,12 @@ class PendingActionService:
                     {
                         "pending_action_id": pending_action_id,
                         "user_id": clean_uid,
-                        "status": "PENDING",
                         "expires_at": {"$gt": now_iso},
+                        "$or": [
+                            {"status": "PENDING"},
+                            {"status": "FAILED"},
+                            {"status": "CONFIRMING", "confirmed_at": {"$lte": stale_cutoff}}
+                        ]
                     },
                     {"$set": {"status": "CONFIRMING", "confirmed_at": now_iso}},
                     return_document=True,
@@ -234,20 +242,20 @@ class PendingActionService:
             if not mem_doc or mem_doc.get("user_id") != clean_uid:
                 return None, "ACTION_NOT_FOUND"
 
-            if mem_doc.get("status") != "PENDING":
-                if mem_doc.get("status") == "CONFIRMING":
-                    return None, "CONCURRENT_EXECUTION_BLOCKED"
-                elif mem_doc.get("status") == "CANCELLED":
-                    return None, "ACTION_CANCELLED"
-                elif mem_doc.get("status") in ("EXECUTED", "CONFIRMED"):
-                    return PendingCommunicationAction(**mem_doc), "ACTION_ALREADY_EXECUTED"
-                elif mem_doc.get("status") == "EXPIRED":
-                    return None, "ACTION_EXPIRED"
-                return None, "CONCURRENT_EXECUTION_BLOCKED"
-
-            if mem_doc.get("expires_at", "") <= now_iso:
+            curr_status = mem_doc.get("status")
+            if curr_status in ("EXECUTED", "CONFIRMED"):
+                return PendingCommunicationAction(**mem_doc), "ACTION_ALREADY_EXECUTED"
+            elif curr_status == "CANCELLED":
+                return None, "ACTION_CANCELLED"
+            elif curr_status == "EXPIRED" or mem_doc.get("expires_at", "") <= now_iso:
                 mem_doc["status"] = "EXPIRED"
                 return None, "ACTION_EXPIRED"
+            elif curr_status == "CONFIRMING":
+                c_at = mem_doc.get("confirmed_at") or mem_doc.get("created_at") or ""
+                if c_at > stale_cutoff:
+                    return None, "CONCURRENT_EXECUTION_BLOCKED"
+            elif curr_status not in ("PENDING", "FAILED"):
+                return None, "CONCURRENT_EXECUTION_BLOCKED"
 
             mem_doc["status"] = "CONFIRMING"
             mem_doc["confirmed_at"] = now_iso

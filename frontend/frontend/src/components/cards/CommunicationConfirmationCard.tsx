@@ -230,6 +230,11 @@ export const CommunicationConfirmationCard: React.FC<Props> = ({
               <Loader2 size={12} className="animate-spin" />
               <span>Sending...</span>
             </>
+          ) : errorMessage ? (
+            <>
+              <Send size={12} />
+              <span>Retry Send</span>
+            </>
           ) : (
             <>
               <Send size={12} />
