@@ -364,6 +364,48 @@ class MetaWhatsAppExecutor:
                         "The connected user token lacks permissions for WABA 1463033045973436. "
                         "Please open Service Connections in Settings, click 'Disconnect' to clear stale tokens, and connect the verified Blackhole account."
                     )
+                # Automatic fallback to approved template if 24-hour service window is closed
+                if code == 131047:
+                    logger.info("24-hour window closed, auto-dispatching via approved template 'mitra_notification'...")
+                    template_payload = {
+                        "messaging_product": "whatsapp",
+                        "to": norm["digits_only"],
+                        "type": "template",
+                        "template": {
+                            "name": "mitra_notification",
+                            "language": {"code": "en_US"},
+                            "components": [
+                                {
+                                    "type": "body",
+                                    "parameters": [
+                                        {"type": "text", "text": message.strip()}
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                    tmpl_resp = self._execute_graph_post(
+                        self.system_phone_number_id or VERIFIED_BLACKHOLE_PHONE_ID,
+                        "messages",
+                        template_payload,
+                        fallback_token
+                    )
+                    if tmpl_resp.status_code in (200, 201):
+                        messages = tmpl_resp.json().get("messages", [])
+                        wamid = messages[0].get("id") if messages else None
+                        return {
+                            "status": "success",
+                            "delivery_state": "pending",
+                            "platform": "whatsapp",
+                            "mode": "business",
+                            "message_id": wamid,
+                            "recipient": norm["formatted"],
+                            "recipient_e164": norm["e164"],
+                            "trace_id": trace_id,
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "source": "approved_template_mitra_notification"
+                        }
+
                 elif code == 131047:
                     err_code = "META_24H_WINDOW_EXPIRED"
                     user_friendly_msg = (
