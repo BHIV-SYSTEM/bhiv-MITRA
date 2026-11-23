@@ -211,12 +211,7 @@ class MetaWhatsAppExecutor:
                     phone = extra.get("phone_number_id") or conn.get("provider_account_id") or self.system_phone_number_id
                     token = conn.get("access_token")
 
-                    # If targeting the verified Blackhole Infiverse WABA/Phone, use system permanent token
-                    # because personal Facebook OAuth tokens lack permissions for owning company assets
-                    if (waba == self.system_waba_id or phone == self.system_phone_number_id) and self.system_access_token:
-                        token = self.system_access_token
-                    else:
-                        token = token or self.system_access_token
+                    token = conn.get("access_token") or self.system_access_token
 
                     return {
                         "access_token": token,
