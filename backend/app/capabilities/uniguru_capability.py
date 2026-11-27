@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 import logging
 import os
+import time
 
 from app.capabilities.base_capability import BaseCapability, CapabilityResult
 from app.core.llm_bridge import llm_bridge
@@ -54,25 +55,37 @@ class UniGuruCapability(BaseCapability):
 
             registry = AdapterRegistry()
             uniguru_adapter = registry.get_adapter("UniGuru")
-            if uniguru_adapter is not None and os.getenv("UNIGURU_API_URL"):
+            if uniguru_adapter is not None:
                 req = IntegrationRequest(
                     source_product="mitra",
                     target_product="UniGuru",
-                    action="query",
+                    action="ask",
                     payload={"query": message},
-                    trace_id=trace_id or "uniguru_trace_001",
+                    trace_id=trace_id or f"mitra_uniguru_{int(time.time()*1000)}",
                 )
                 resp = await uniguru_adapter.query(req)
                 if resp.success:
+                    answer = resp.data.get("answer") or ""
+                    verification_status = str(resp.data.get("verification_status") or "UNVERIFIED")
+                    decision = str(resp.data.get("decision") or ("answer" if verification_status == "VERIFIED" else "forward"))
+                    retrieval_trace = resp.data.get("retrieval_trace") or {}
+                    evidence = retrieval_trace.get("engine") or resp.data.get("evidence") or "DeterministicKoshaPipeline"
+
                     return CapabilityResult(
                         capability=self.name,
                         intent=intent,
                         status="success",
-                        summary="Knowledge response from UniGuru Live HTTP API.",
+                        summary=f"Knowledge response from UniGuru Live HTTP API ({verification_status}).",
                         data={
-                            "answer": resp.data.get("answer", resp.data),
+                            "answer": answer,
                             "query": message,
-                            "knowledge_evidence": resp.data.get("evidence", "Verified Knowledge Base v2.2"),
+                            "verification_status": verification_status,
+                            "decision": decision,
+                            "confidence": resp.data.get("confidence", 0.0),
+                            "confidence_breakdown": resp.data.get("confidence_breakdown", {}),
+                            "matched_signals": resp.data.get("matched_signals", []),
+                            "knowledge_evidence": evidence,
+                            "retrieval_trace": retrieval_trace,
                             "source": "uniguru_live_api",
                             "latency_ms": resp.latency_ms,
                         },

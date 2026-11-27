@@ -29,9 +29,19 @@ logger = get_logger(__name__)
 class CompanionChatRequest(BaseModel):
     message: str
     user_id: Optional[str] = None
+    session_id: Optional[str] = None
+    conversation_id: Optional[str] = None
     platform: str = "web"
     device: str = "browser"
     page_context: Optional[dict] = None
+
+
+class CreateConversationRequest(BaseModel):
+    title: Optional[str] = "New Chat"
+
+
+class RenameConversationRequest(BaseModel):
+    title: str
 
 
 class CompanionContextSyncRequest(BaseModel):
@@ -62,6 +72,7 @@ async def companion_chat(
     if not request.message or not request.message.strip():
         return JSONResponse(status_code=400, content={"error": "message is required"})
 
+    target_session_id = request.session_id or request.conversation_id
     try:
         response = await companion_orchestrator.process(
             user_id=auth_user_id,
@@ -69,6 +80,7 @@ async def companion_chat(
             platform=request.platform,
             device=request.device,
             page_context=request.page_context,
+            session_id=target_session_id,
         )
         return JSONResponse(status_code=200, content=response.to_dict())
     except Exception as exc:
@@ -91,6 +103,7 @@ async def companion_chat_stream(
     if not request.message or not request.message.strip():
         return JSONResponse(status_code=400, content={"error": "message is required"})
 
+    target_session_id = request.session_id or request.conversation_id
     async def event_generator():
         import json
         try:
@@ -100,6 +113,7 @@ async def companion_chat_stream(
                 platform=request.platform,
                 device=request.device,
                 page_context=request.page_context,
+                session_id=target_session_id,
             ):
                 if await raw_request.is_disconnected():
                     logger.info("Client disconnected during SSE stream for user_id=%s", auth_user_id)
@@ -166,6 +180,66 @@ async def companion_greeting(
     except Exception as exc:
         logger.exception("Greeting failed: %s", exc)
         return JSONResponse(status_code=500, content={"error": str(exc)})
+
+
+@router.get("/api/companion/conversations")
+async def list_conversations(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """List all conversations for the authenticated user (ChatGPT-style history)."""
+    auth_user_id = current_user["user_id"]
+    convs = await session_manager.list_conversations(auth_user_id)
+    return {"conversations": convs, "count": len(convs)}
+
+
+@router.post("/api/companion/conversations")
+async def create_conversation(
+    request: Optional[CreateConversationRequest] = None,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Explicitly create a new conversation (+ New Chat)."""
+    auth_user_id = current_user["user_id"]
+    title = (request.title if request and request.title else "New Chat")
+    session = await session_manager.create_conversation(auth_user_id, title=title)
+    return {"status": "created", "conversation": session.to_dict()}
+
+
+@router.get("/api/companion/conversations/{conversation_id}")
+async def get_conversation(
+    conversation_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Get conversation details and full message history."""
+    auth_user_id = current_user["user_id"]
+    conv = await session_manager.get_conversation(auth_user_id, conversation_id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return conv
+
+
+@router.patch("/api/companion/conversations/{conversation_id}")
+async def rename_conversation(
+    conversation_id: str,
+    request: RenameConversationRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Rename conversation title."""
+    auth_user_id = current_user["user_id"]
+    success = await session_manager.rename_conversation(auth_user_id, conversation_id, request.title)
+    if not success:
+        raise HTTPException(status_code=404, detail="Conversation not found or invalid title")
+    return {"status": "renamed", "conversation_id": conversation_id, "title": request.title}
+
+
+@router.delete("/api/companion/conversations/{conversation_id}")
+async def delete_conversation(
+    conversation_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Delete conversation and all its messages."""
+    auth_user_id = current_user["user_id"]
+    await session_manager.delete_conversation(auth_user_id, conversation_id)
+    return {"status": "deleted", "conversation_id": conversation_id}
 
 
 @router.get("/api/companion/session/{user_id}")

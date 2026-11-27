@@ -24,6 +24,7 @@ export interface Message {
   intent?:          string;
   capabilityResult?: CapabilityResult | null;
   suggestedActions?: string[];
+  memoryUpdated?:   string;
 }
 
 export interface CapabilityResult {
@@ -118,6 +119,16 @@ interface CompanionStore {
 
   // Memory
   memory: UserMemory;
+
+  // Conversations & History
+  conversations: any[];
+  setConversations: (conversations: any[]) => void;
+  activeConversationId: string | null;
+  setActiveConversationId: (id: string | null) => void;
+  historyOpen: boolean;
+  setHistoryOpen: (open: boolean) => void;
+  toggleHistory: () => void;
+  setMessages: (messages: Message[]) => void;
 
   // ── Actions ──────────────────────────────────────────
   setStatus:    (s: CompanionStatus) => void;
@@ -219,6 +230,15 @@ export const useCompanionStore = create<CompanionStore>()(
         contextItems: [],
         notifications: [],
         memory: {},
+
+        conversations: [],
+        setConversations: (conversations) => set({ conversations }),
+        activeConversationId: null,
+        setActiveConversationId: (activeConversationId) => set({ activeConversationId }),
+        historyOpen: false,
+        setHistoryOpen: (historyOpen) => set({ historyOpen }),
+        toggleHistory: () => set(s => ({ historyOpen: !s.historyOpen })),
+        setMessages: (messages) => set({ messages }),
 
         // ── Status & Companion Avatar & Chatbot ──────────────────
         setStatus:    (status)    => set({ status }),

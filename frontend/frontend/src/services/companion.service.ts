@@ -126,6 +126,7 @@ export const CompanionService = {
     message: string,
     platform = 'web',
     signal?: AbortSignal,
+    sessionId?: string,
   ): Promise<ChatResponse> {
     const url = `${getApiBase()}/api/companion/chat`;
     const headers = getAuthHeaders();
@@ -134,7 +135,7 @@ export const CompanionService = {
       const resp = await fetch(url, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ user_id: userId, message, platform }),
+        body: JSON.stringify({ user_id: userId, message, platform, session_id: sessionId }),
         signal,
       });
 
@@ -166,6 +167,7 @@ export const CompanionService = {
     signal?: AbortSignal,
     platform = 'web',
     onEvent?: (event: any) => void,
+    sessionId?: string,
   ): Promise<string> {
     const url = `${getApiBase()}/api/companion/chat/stream`;
     const headers = getAuthHeaders();
@@ -174,7 +176,7 @@ export const CompanionService = {
       const resp = await fetch(url, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ user_id: userId, message, platform }),
+        body: JSON.stringify({ user_id: userId, message, platform, session_id: sessionId }),
         signal,
       });
 
@@ -266,6 +268,52 @@ export const CompanionService = {
       }
       throw err;
     }
+  },
+
+  // ── Multi-Conversation History Management ────────────
+  async getConversations(): Promise<{ conversations: any[] }> {
+    const resp = await fetch(`${getApiBase()}/api/companion/conversations`, {
+      headers: getAuthHeaders(),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp.json();
+  },
+
+  async createConversation(title?: string): Promise<{ conversation: any }> {
+    const resp = await fetch(`${getApiBase()}/api/companion/conversations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({ title: title || 'New Chat' }),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp.json();
+  },
+
+  async getConversation(id: string): Promise<{ conversation: any; messages: any[] }> {
+    const resp = await fetch(`${getApiBase()}/api/companion/conversations/${encodeURIComponent(id)}`, {
+      headers: getAuthHeaders(),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp.json();
+  },
+
+  async renameConversation(id: string, title: string): Promise<any> {
+    const resp = await fetch(`${getApiBase()}/api/companion/conversations/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({ title }),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp.json();
+  },
+
+  async deleteConversation(id: string): Promise<any> {
+    const resp = await fetch(`${getApiBase()}/api/companion/conversations/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp.json();
   },
 
   async getGreeting(userId: string): Promise<{ greeting: string }> {

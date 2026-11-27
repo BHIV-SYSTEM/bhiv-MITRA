@@ -111,6 +111,20 @@ const TopBar: React.FC<Props> = ({ onSearch }) => {
             <Search size={14} />
           </button>
 
+          {/* Chat History Trigger */}
+          <button
+            id="topbar-history"
+            onClick={() => {
+              const histFn = (window as any).__MITRA_TOGGLE_HISTORY__;
+              if (histFn) histFn();
+            }}
+            className="flex min-w-[36px] min-h-[36px] w-9 h-9 items-center justify-center rounded-xl bg-surface-overlay border border-border-subtle text-text-muted hover:border-border-default hover:text-brand-light active:scale-95 transition-all text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand cursor-pointer"
+            aria-label="Chat History"
+            title="Chat History"
+          >
+            <Clock size={15} />
+          </button>
+
           {/* Unified Responsive Tools Menu */}
           <div className="relative">
             <button
@@ -284,6 +298,13 @@ const TopBar: React.FC<Props> = ({ onSearch }) => {
                       >
                         <Brain size={13} className="text-indigo-400 flex-shrink-0" />
                         <span className="text-2xs font-medium text-text-secondary truncate">Memory</span>
+                      </button>
+                      <button
+                        onClick={() => handleToolAction(() => (window as any).__MITRA_TOGGLE_HISTORY__?.())}
+                        className="flex items-center gap-2 p-2 rounded-lg hover:bg-surface-overlay text-left transition-colors"
+                      >
+                        <Clock size={13} className="text-cyan-400 flex-shrink-0" />
+                        <span className="text-2xs font-medium text-text-secondary truncate">History</span>
                       </button>
                       <button
                         onClick={() => handleToolAction(() => (window as any).__MITRA_WHATSAPP_WEB__?.())}
