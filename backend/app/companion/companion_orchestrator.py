@@ -96,6 +96,7 @@ class CompanionResponse:
     trace_id: Optional[str] = None
     intent: Optional[str] = None
     suggested_actions: List[str] = field(default_factory=list)
+    memory_updated: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -105,6 +106,7 @@ class CompanionResponse:
             "trace_id":          self.trace_id,
             "intent":            self.intent,
             "suggested_actions": self.suggested_actions,
+            "memory_updated":    self.memory_updated,
         }
 
 
@@ -305,6 +307,7 @@ class CompanionOrchestrator:
         device: str = "browser",
         trace_id: Optional[str] = None,
         page_context: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Canonical streaming pipeline for all Mitra conversational interactions.
@@ -314,6 +317,7 @@ class CompanionOrchestrator:
           - approval_required (if pending confirmation card is needed)
           - capability_result
           - assistant_delta
+          - memory_updated (ChatGPT-style memory notification)
           - message_complete
           - error
         """
@@ -352,6 +356,7 @@ class CompanionOrchestrator:
         # 1. Get/create session
         session = await session_manager.get_or_create(
             user_id=user_id,
+            session_id=session_id,
             platform=platform,
             device=device,
             ttl_hours=self._config.session_ttl_hours,
@@ -365,11 +370,11 @@ class CompanionOrchestrator:
 
         # 2. Dynamic Zero-Shot LLM & Algorithmic Typo Correction + Coreference Resolution
         normalized_message = await normalize_text_async(message)
-        recent_history = await session_manager.get_history(user_id, limit=6)
+        recent_history = await session_manager.get_history(user_id, limit=6, session_id=session.session_id)
         resolved_message = await resolve_coreference_query_async(normalized_message, recent_history)
 
         # Store original user turn exactly once in session history
-        await session_manager.add_turn(user_id, role="user", content=message)
+        await session_manager.add_turn(user_id, role="user", content=message, session_id=session.session_id)
 
         # 2.5. Check Conversational Confirmation / Cancellation of Pending Communication Actions (HITL B.COMM-3)
         from app.services.pending_action_service import pending_action_service
@@ -874,19 +879,31 @@ class CompanionOrchestrator:
             role="assistant",
             content=response_text,
             capability_result=capability_result.to_dict() if capability_result else None,
+            session_id=session.session_id,
         )
 
-        # 7. Auto-extract facts from message (name, preferences)
-        await self._extract_facts(user_id, message, intent_data)
+        # 7. Auto-extract facts from message (name, preferences, ChatGPT-style memory)
+        memory_fact = await self._extract_facts(user_id, message, intent_data)
+        if memory_fact:
+            yield {
+                "type": "memory_updated",
+                "request_id": ctx.execution_id,
+                "session_id": session.session_id,
+                "key": memory_fact.get("key"),
+                "value": memory_fact.get("value"),
+                "fact": memory_fact.get("fact"),
+            }
 
         # 8. Emit final complete event
         yield {
             "type": "message_complete",
             "request_id": ctx.execution_id,
+            "session_id": session.session_id,
             "message": response_text,
             "capability_result": self._sanitize_client_data(capability_result.to_dict()) if capability_result else None,
             "intent": intent,
             "suggested_actions": self._suggest_actions(intent, capability_result),
+            "memory_updated": memory_fact.get("fact") if memory_fact else None,
         }
 
     async def process(
@@ -897,6 +914,7 @@ class CompanionOrchestrator:
         device: str = "browser",
         trace_id: Optional[str] = None,
         page_context: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None,
     ) -> CompanionResponse:
         """
         Non-streaming response wrapper delegating to canonical process_stream pipeline.
@@ -904,9 +922,10 @@ class CompanionOrchestrator:
         """
         final_message = ""
         cap_result_dict = None
-        session_id = None
+        resp_session_id = None
         intent = None
         suggested_actions: List[str] = []
+        memory_updated_fact = None
 
         async for event in self.process_stream(
             user_id=user_id,
@@ -915,10 +934,13 @@ class CompanionOrchestrator:
             device=device,
             trace_id=trace_id,
             page_context=page_context,
+            session_id=session_id,
         ):
             etype = event.get("type")
             if etype == "message_start":
-                session_id = event.get("session_id")
+                resp_session_id = event.get("session_id")
+            elif etype == "memory_updated":
+                memory_updated_fact = event.get("fact")
             elif etype == "assistant_delta":
                 final_message += event.get("delta", "")
             elif etype == "message_complete":
@@ -926,14 +948,17 @@ class CompanionOrchestrator:
                 cap_result_dict = event.get("capability_result")
                 intent = event.get("intent")
                 suggested_actions = event.get("suggested_actions", [])
+                if not memory_updated_fact:
+                    memory_updated_fact = event.get("memory_updated")
 
         return CompanionResponse(
             message=final_message,
             capability_result=cap_result_dict,
-            session_id=session_id,
+            session_id=resp_session_id or session_id,
             trace_id=trace_id,
             intent=intent,
             suggested_actions=suggested_actions,
+            memory_updated=memory_updated_fact,
         )
 
     async def stream_conversation_tokens(self, message: str, user_id: str) -> AsyncIterator[str]:
@@ -1205,17 +1230,47 @@ class CompanionOrchestrator:
         return "".join(tokens)
 
     async def _extract_facts(
-        self, user_id: str, message: str, intent_data: Dict
-    ) -> None:
-        """Auto-extract user facts (name, preferences) from message."""
-        msg_lower = message.lower()
+        self, user_id: str, message: str, intent_data: Optional[Dict] = None
+    ) -> Optional[Dict[str, str]]:
+        """Auto-extract user facts (name, preferences, ChatGPT-style memory) from message."""
+        msg_clean = message.strip()
+        msg_lower = msg_clean.lower()
+
+        # 1. Name detection
         for phrase in ("my name is ", "i am ", "i'm ", "call me "):
             if phrase in msg_lower:
                 idx = msg_lower.index(phrase) + len(phrase)
-                candidate = message[idx:].split()[0].strip(".,!?").capitalize()
-                if len(candidate) >= 2:
+                candidate = msg_clean[idx:].split()[0].strip(".,!?").capitalize()
+                if len(candidate) >= 2 and candidate.lower() not in ("a", "an", "the", "not", "just", "trying", "going", "asking", "here", "ready"):
                     await companion_memory.set_fact(user_id, "name", candidate, source="user")
-                    break
+                    return {"key": "name", "value": candidate, "fact": f"Your name is {candidate}"}
+
+        # 2. ChatGPT-style explicit memory: "Remember that ...", "Remember: ..."
+        remember_match = re.search(r'\b(?:remember\s+that|remember\s*[:,-]|note\s+that|keep\s+in\s+mind\s+that)\s+(.+)', msg_clean, re.IGNORECASE)
+        if remember_match:
+            raw_fact = remember_match.group(1).strip().rstrip('.!?')
+            if len(raw_fact) >= 3:
+                key_candidate = "_".join(raw_fact.lower().split()[:3])
+                key_candidate = re.sub(r'[^a-z0-9_]', '', key_candidate)[:24] or "user_memory"
+                await companion_memory.set_fact(user_id, key_candidate, raw_fact, source="user_explicit")
+                return {"key": key_candidate, "value": raw_fact, "fact": f"Remembered: {raw_fact}"}
+
+        # 3. Location / Job / Preferences detection
+        pref_match = re.search(r'\b(?:i\s+work\s+as|my\s+role\s+is|my\s+profession\s+is)\s+([a-zA-Z\s]+)', msg_clean, re.IGNORECASE)
+        if pref_match:
+            role_val = pref_match.group(1).strip().rstrip('.!?')
+            if role_val:
+                await companion_memory.set_fact(user_id, "role", role_val, source="user")
+                return {"key": "role", "value": role_val, "fact": f"Role: {role_val}"}
+
+        loc_match = re.search(r'\b(?:i\s+live\s+in|i\s+am\s+from|my\s+city\s+is)\s+([a-zA-Z\s]+)', msg_clean, re.IGNORECASE)
+        if loc_match:
+            loc_val = loc_match.group(1).strip().rstrip('.!?')
+            if loc_val:
+                await companion_memory.set_fact(user_id, "location", loc_val, source="user")
+                return {"key": "location", "value": loc_val, "fact": f"Location: {loc_val}"}
+
+        return None
 
     def _suggest_actions(
         self,

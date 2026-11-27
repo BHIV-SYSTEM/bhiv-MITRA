@@ -25,7 +25,8 @@ import Login from './components/auth/Login';
 import TermsPage from './components/pages/TermsPage';
 import PrivacyPage from './components/pages/PrivacyPage';
 import FloatingOrb from './components/shell/FloatingOrb';
-import { useCompanionStore, useIsMobile, toggleMitraChatbotWindow } from './store/companion.store';
+import ChatSidebar from './components/ChatSidebar';
+import { useCompanionStore, useIsMobile, toggleMitraChatbotWindow, Message } from './store/companion.store';
 import { CompanionService } from './services/companion.service';
 import { getAuthToken, setAuthToken, getApiBase, getAuthHeaders } from './services/apiConfig';
 import { cn } from './lib/utils';
@@ -113,8 +114,10 @@ const MobileBottomNav: React.FC<{
 const App: React.FC = () => {
   const {
     userId, sidebar, contextPanel, isMobile, authModalOpen, setAuthModalOpen,
-    setStatus, setSessionId, setUserName, setMemory, setAuth, setAuthStatus,
-    addMessage, updateMessage, clearMessages, addNotification, addContextItem,
+    setStatus, sessionId, setSessionId, setUserName, setMemory, setAuth, setAuthStatus,
+    addMessage, updateMessage, clearMessages, setMessages, addNotification, addContextItem,
+    conversations, setConversations, activeConversationId, setActiveConversationId,
+    historyOpen, setHistoryOpen,
   } = useCompanionStore();
 
   const [activeSection, setActiveSection] = useState(() => {
@@ -262,6 +265,16 @@ const App: React.FC = () => {
           body: 'Your AI companion is active and connected.', read: false,
         });
         showToast('success', 'Mitra Connected', 'All systems operational');
+
+        // Load chat history
+        try {
+          const convRes = await CompanionService.getConversations();
+          if (convRes?.conversations) {
+            setConversations(convRes.conversations);
+          }
+        } catch (e) {
+          console.warn('[App] Failed to load conversations on startup:', e);
+        }
       } catch {
         // API fallback - keep messages clean so Welcome Screen renders
       }
@@ -273,6 +286,17 @@ const App: React.FC = () => {
   // Active request controller ref to support generation cancellation
   const activeAbortControllerRef = useRef<AbortController | null>(null);
   const activeMessageIdRef = useRef<string | null>(null);
+
+  const loadConversations = useCallback(async () => {
+    try {
+      const res = await CompanionService.getConversations();
+      if (res?.conversations) {
+        setConversations(res.conversations);
+      }
+    } catch (e) {
+      console.warn('[App] Failed to refresh conversations:', e);
+    }
+  }, [setConversations]);
 
   const handleStop = useCallback(() => {
     if (activeAbortControllerRef.current) {
@@ -305,9 +329,70 @@ const App: React.FC = () => {
     }
     activeMessageIdRef.current = null;
     setStatus('active');
+    setActiveConversationId(null);
     setSessionId(`sess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`);
     clearMessages();
-  }, [clearMessages, setStatus, setSessionId]);
+  }, [clearMessages, setStatus, setSessionId, setActiveConversationId]);
+
+  const handleSelectConversation = useCallback(async (id: string) => {
+    try {
+      setActiveConversationId(id);
+      setSessionId(id);
+      const res = await CompanionService.getConversation(id);
+      if (res?.messages) {
+        const mapped: Message[] = [];
+        res.messages.forEach((turn: any) => {
+          if (turn.user_message) {
+            mapped.push({
+              id: `msg_u_${turn.turn_id || Math.random()}`,
+              role: 'user',
+              content: turn.user_message,
+              timestamp: turn.timestamp || new Date().toISOString(),
+            });
+          }
+          if (turn.assistant_response) {
+            mapped.push({
+              id: `msg_a_${turn.turn_id || Math.random()}`,
+              role: 'assistant',
+              content: turn.assistant_response,
+              timestamp: turn.timestamp || new Date().toISOString(),
+              intent: turn.intent,
+              capabilityResult: turn.capability_result,
+              memoryUpdated: turn.memory_updated,
+            });
+          }
+        });
+        setMessages(mapped);
+      }
+    } catch (err) {
+      console.error('[App] Failed to load conversation:', err);
+      showToast('error', 'Error', 'Failed to load conversation history');
+    }
+  }, [setActiveConversationId, setSessionId, setMessages]);
+
+  const handleDeleteConversation = useCallback(async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await CompanionService.deleteConversation(id);
+      showToast('info', 'Deleted', 'Conversation removed');
+      if (activeConversationId === id) {
+        handleNewChat();
+      }
+      loadConversations();
+    } catch (err) {
+      console.error('[App] Failed to delete conversation:', err);
+      showToast('error', 'Error', 'Failed to delete conversation');
+    }
+  }, [activeConversationId, handleNewChat, loadConversations]);
+
+  const handleRenameConversation = useCallback(async (id: string, newTitle: string) => {
+    try {
+      await CompanionService.renameConversation(id, newTitle);
+      loadConversations();
+    } catch (err) {
+      console.error('[App] Failed to rename conversation:', err);
+    }
+  }, [loadConversations]);
 
   // ── Send message handler ────────────────────────────────
   const handleSend = useCallback(async (message: string, isVoice = false) => {
@@ -329,6 +414,7 @@ const App: React.FC = () => {
     // Create assistant placeholder message for streaming / real-time updates
     const assistantMsgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     activeMessageIdRef.current = assistantMsgId;
+    const currentSessionId = activeConversationId || sessionId || undefined;
 
     // Add placeholder assistant message
     useCompanionStore.setState(s => ({
@@ -362,6 +448,14 @@ const App: React.FC = () => {
             if (controller.signal.aborted) return;
             if (event.type === 'message_start' && event.session_id) {
               setSessionId(event.session_id);
+              if (!activeConversationId) {
+                setActiveConversationId(event.session_id);
+              }
+            } else if (event.type === 'memory_updated') {
+              updateMessage(assistantMsgId, {
+                memoryUpdated: event.fact || `Saved: ${event.key}`,
+              });
+              showToast('success', 'Memory Updated', `Mitra remembered: ${event.key || event.fact || ''}`);
             } else if (event.type === 'approval_required') {
               updateMessage(assistantMsgId, {
                 capabilityResult: {
@@ -410,25 +504,32 @@ const App: React.FC = () => {
                 intent: event.intent,
                 capabilityResult: event.capability_result || undefined,
                 suggestedActions: event.suggested_actions || [],
+                memoryUpdated: event.memory_updated || undefined,
               });
+              loadConversations();
             }
-          }
+          },
+          currentSessionId
         );
       } catch (streamErr: any) {
         if (streamErr.name === 'AbortError') {
           throw streamErr;
         }
         // Fallback to standard chat endpoint if streaming encountered a non-abort error
-        const resp = await CompanionService.chat(userId, message, 'web', controller.signal);
+        const resp = await CompanionService.chat(userId, message, 'web', controller.signal, currentSessionId);
         if (controller.signal.aborted) return;
         fullContent = resp.message;
-        if (resp.session_id) setSessionId(resp.session_id);
+        if (resp.session_id) {
+          setSessionId(resp.session_id);
+          if (!activeConversationId) setActiveConversationId(resp.session_id);
+        }
         updateMessage(assistantMsgId, {
           content: resp.message,
           intent: resp.intent,
           capabilityResult: resp.capability_result || null,
           suggestedActions: resp.suggested_actions || [],
         });
+        loadConversations();
 
         // Push capability result to context panel
         if (resp.capability_result?.data) {
@@ -477,14 +578,15 @@ const App: React.FC = () => {
         }
       }
     }
-  }, [userId, addMessage, updateMessage, addContextItem, setStatus, setSessionId, setActiveSection]);
+  }, [userId, activeConversationId, sessionId, addMessage, updateMessage, addContextItem, setStatus, setSessionId, setActiveConversationId, setActiveSection, loadConversations]);
 
   // Expose handleSend and handleNewChat for suggestion chips and header actions
   useEffect(() => {
     (window as any).__MITRA_SEND__ = handleSend;
     (window as any).__MITRA_NEW_CHAT__ = handleNewChat;
     (window as any).__MITRA_STOP__ = handleStop;
-  }, [handleSend, handleNewChat, handleStop]);
+    (window as any).__MITRA_TOGGLE_HISTORY__ = () => setHistoryOpen(!useCompanionStore.getState().historyOpen);
+  }, [handleSend, handleNewChat, handleStop, setHistoryOpen]);
   // Expose settings toggle for Sidebar
   useEffect(() => { (window as any).__MITRA_SETTINGS__ = () => setSettingsOpen(true); }, []);
   // Expose focus toggle
@@ -572,6 +674,18 @@ const App: React.FC = () => {
 
       {/* Floating Mitra Companion Orb */}
       <FloatingOrb />
+
+      {/* ChatGPT-style Chat History Sidebar */}
+      <ChatSidebar
+        isOpen={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        conversations={conversations}
+        activeId={activeConversationId}
+        onSelect={handleSelectConversation}
+        onNewChat={handleNewChat}
+        onDelete={handleDeleteConversation}
+        onRename={handleRenameConversation}
+      />
 
       {/* Global Toast Notifications */}
       <Toast />

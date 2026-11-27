@@ -105,6 +105,14 @@ const ConversationCard: React.FC<Props> = ({ message, onActionConfirm }) => {
         'flex flex-col gap-1.5 sm:gap-2 max-w-[85%] sm:max-w-[75%] lg:max-w-[72%]',
         isAssistant ? 'items-start' : 'items-end',
       )}>
+        {/* ChatGPT-style Memory Pill */}
+        {isAssistant && message.memoryUpdated && (
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-brand/15 border border-brand/30 text-brand-light text-2xs font-medium w-fit mb-0.5 select-none animate-fadeIn">
+            <span className="text-xs">🧠</span>
+            <span>{message.memoryUpdated}</span>
+          </div>
+        )}
+
         {/* Bubble */}
         {hasContent && (
           <div className={cn(

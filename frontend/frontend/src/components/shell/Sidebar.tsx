@@ -3,7 +3,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   MessageCircle, Calendar, CheckSquare, Bell, BookOpen,
-  Settings, ChevronLeft, ChevronRight, Play, X, User, TrendingUp,
+  Settings, ChevronLeft, ChevronRight, Play, X, User, TrendingUp, Clock,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useCompanionStore, resolveDisplayName } from '../../store/companion.store';
@@ -86,6 +86,27 @@ const DesktopSidebar: React.FC<Props> = ({
 
       {/* Footer */}
       <div className="px-2 pb-3 space-y-0.5 border-t border-border-subtle pt-2">
+        <button onClick={() => {
+          const fn = (window as any).__MITRA_TOGGLE_HISTORY__;
+          if (fn) fn();
+        }} className={cn(
+          'w-full flex items-center gap-3 px-2.5 py-2 rounded-lg transition-all duration-150 text-text-muted hover:text-text-secondary hover:bg-surface-overlay cursor-pointer',
+        )} title="Chat History">
+          <Clock size={15} />
+          <AnimatePresence>
+            {!collapsed && (
+              <motion.span
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="text-xs font-medium"
+              >
+                Chat History
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </button>
+
         <button onClick={() => {
           const fn = (window as any).__MITRA_SETTINGS__;
           if (fn) fn();
@@ -234,6 +255,19 @@ const MobileSidebarDrawer: React.FC<Props> = ({
                   </button>
                 );
               })}
+
+              {/* Chat History in mobile navigation */}
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  const fn = (window as any).__MITRA_TOGGLE_HISTORY__;
+                  if (fn) fn();
+                }}
+                className="w-full flex items-center gap-3 px-3.5 py-3 min-h-[44px] rounded-xl text-text-secondary hover:bg-surface-overlay active:bg-surface-overlay transition-all text-left cursor-pointer"
+              >
+                <Clock size={16} className="text-cyan-400 flex-shrink-0" />
+                <span className="text-sm">Chat History</span>
+              </button>
 
               {/* Integrations shortcut in mobile navigation */}
               <button
